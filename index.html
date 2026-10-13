@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Macro Lens</title>
+<meta name="description" content="Snap a meal, scan a barcode or type what you ate. Calories, macros, sodium, potassium, fiber and vitamins, all on your phone.">
+<meta name="theme-color" content="#F2F4EE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1311" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21" stroke-linecap="round"/></svg>
+      Macro Lens
+    </div>
+    <button type="button" class="btn ghost sm" id="install-btn" hidden>Install app</button>
+    <span class="offline-pill" id="offline-pill" hidden>Offline</span>
+  </header>
+
+  <!-- TODAY -->
+  <section class="view" id="view-today" aria-label="Daily log">
+    <div class="daynav">
+      <button type="button" class="iconbtn" data-action="day-prev" aria-label="Previous day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+      <div class="daynav-label"><b id="day-title">Today</b><span id="day-sub"></span></div>
+      <button type="button" class="iconbtn" id="day-next" data-action="day-next" aria-label="Next day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+    </div>
+    <div class="card">
+      <div class="summary">
+        <div class="ring-wrap">
+          <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="ring-track" cx="60" cy="60" r="52"/>
+            <circle class="ring-fill" id="ring-fill" cx="60" cy="60" r="52" stroke-dasharray="326.73" stroke-dashoffset="326.73" transform="rotate(-90 60 60)"/>
+          </svg>
+          <div class="ring-mid"><b class="tnum" id="kcal-left">2,200</b><span id="kcal-left-lbl">kcal left</span></div>
+        </div>
+        <div class="macros" id="macros"></div>
+      </div>
+      <div class="sum-foot tnum"><span>Eaten <b id="kcal-eaten">0</b></span><span>Goal <b id="kcal-goal">2,200</b> kcal <button type="button" class="linkbtn" id="goal-set" data-action="tab" data-tab="body">Personalize</button></span></div>
+    </div>
+    <div class="sec">
+      <div class="sec-head"><h2 class="h">Last 7 days</h2><span class="sub" id="week-avg"></span></div>
+      <div class="week" id="week"></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Key nutrients</h2>
+      <div class="keyn" id="keyn"></div>
+      <details class="alln">
+        <summary>All vitamins &amp; minerals <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <ul class="nlist" id="nlist"></ul>
+      </details>
+    </div>
+    <div class="sec">
+      <div class="sec-head"><h2 class="h">Meals</h2><button type="button" class="btn ghost sm" data-action="tab" data-tab="scan">+ Add food</button></div>
+      <div id="meals"></div>
+    </div>
+  </section>
+
+  <!-- ADD FOOD -->
+  <section class="view" id="view-scan" aria-label="Add food" hidden>
+    <div class="seg modes" role="tablist" aria-label="How to add food">
+      <button type="button" role="tab" data-action="mode" data-mode="photo">Photo</button>
+      <button type="button" role="tab" data-action="mode" data-mode="barcode">Barcode</button>
+      <button type="button" role="tab" data-action="mode" data-mode="type">Type</button>
+    </div>
+
+    <div class="sec" id="mode-photo">
+      <div class="frame" id="frame">
+        <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+        <img id="frame-img" alt="Your food photo" hidden>
+        <div class="scanline"></div>
+        <div class="frame-empty" id="frame-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          <span>Center one food or plate in good light.<br>The recognizer suggests what it is; you set the portion.</span>
+        </div>
+        <button type="button" class="xbtn" id="clear-photo" data-action="clear-photo" aria-label="Remove photo" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn primary" data-action="take-photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take photo</button>
+        <button type="button" class="btn ghost" data-action="pick-photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></svg>From gallery</button>
+      </div>
+      <input type="file" id="in-cam" accept="image/*" capture="environment" class="vh" tabindex="-1">
+      <input type="file" id="in-gal" accept="image/*" class="vh" tabindex="-1">
+      <div id="rec-status"></div>
+      <div id="rec-results"></div>
+    </div>
+
+    <div class="sec" id="mode-barcode" hidden>
+      <div class="frame" id="bc-frame">
+        <video id="bc-video" playsinline muted hidden></video>
+        <div class="bc-guide" id="bc-guide" hidden></div>
+        <div class="frame-empty" id="bc-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M4 6v12M7 6v12M10 6v12M13 6v12M15 6v12M18 6v12M20 6v12"/></svg>
+          <span>Point at the barcode on any packaged food.<br>Nutrition comes straight from the product label data.</span>
+        </div>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn primary" id="bc-start" data-action="bc-start">Start scanner</button>
+        <button type="button" class="btn ghost" id="bc-stop" data-action="bc-stop" disabled>Stop</button>
+      </div>
+      <div class="field">
+        <label for="bc-code">Or type the number under the barcode</label>
+        <div class="fix-row"><input type="text" id="bc-code" inputmode="numeric" autocomplete="off" placeholder="e.g. 028400090858"><button type="button" class="btn ghost" data-action="bc-lookup">Look up</button></div>
+      </div>
+      <p class="notice" id="bc-msg" hidden></p>
+    </div>
+
+    <div class="sec" id="mode-type" hidden>
+      <div class="field">
+        <label for="type-in">What did you eat?</label>
+        <textarea id="type-in" placeholder="e.g. 2 eggs, 2 slices toast, 1 tbsp butter&#10;6 oz chicken breast with 1 cup rice"></textarea>
+        <button type="button" class="btn primary" data-action="type-add">Add to plate</button>
+        <p class="err" id="type-msg" hidden></p>
+      </div>
+      <div class="field">
+        <label for="search-in">Or search 8,400 foods</label>
+        <input type="text" id="search-in" autocomplete="off" placeholder="chicken thigh, big mac, oat milk…">
+        <ul class="results" id="search-results"></ul>
+      </div>
+    </div>
+
+    <div class="sec plate" id="plate" hidden>
+      <div class="sec-head"><h2 class="h">Your plate</h2><button type="button" class="linkbtn" data-action="plate-clear">Clear</button></div>
+      <ul class="pitems" id="pitems"></ul>
+      <div class="field">
+        <span class="lbl" id="meal-lbl">Meal</span>
+        <div class="seg" role="group" aria-labelledby="meal-lbl">
+          <button type="button" data-action="meal" data-meal="breakfast">Breakfast</button>
+          <button type="button" data-action="meal" data-meal="lunch">Lunch</button>
+          <button type="button" data-action="meal" data-meal="dinner">Dinner</button>
+          <button type="button" data-action="meal" data-meal="snack">Snack</button>
+        </div>
+      </div>
+      <div class="field"><label for="plate-name">Name</label><input type="text" id="plate-name" placeholder="Lunch"></div>
+      <div id="plate-label"></div>
+      <button type="button" class="btn primary" id="plate-add" data-action="plate-add">Add</button>
+      <p class="logto" id="log-target"></p>
+    </div>
+  </section>
+
+  <!-- BODY -->
+  <section class="view" id="view-body" aria-label="Body stats" hidden>
+    <div class="sec">
+      <h2 class="h">Your stats</h2>
+      <div class="field">
+        <span class="lbl" id="sex-lbl">Sex <span class="hint">(used in the calorie and body-fat formulas)</span></span>
+        <div class="seg" role="group" aria-labelledby="sex-lbl">
+          <button type="button" data-action="sex" data-sex="male">Male</button>
+          <button type="button" data-action="sex" data-sex="female">Female</button>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="b-age">Age</label><div class="unit"><input type="number" id="b-age" inputmode="numeric" min="13" max="100" placeholder="19"><em>yrs</em></div></div>
+        <div class="field"><label for="b-wt">Weight</label><div class="unit"><input type="number" id="b-wt" inputmode="decimal" min="60" max="700" step="0.1" placeholder="165"><em>lb</em></div></div>
+      </div>
+      <div class="field">
+        <span class="lbl">Height</span>
+        <div class="hgt">
+          <div class="unit"><input type="number" id="b-ft" inputmode="numeric" min="3" max="8" placeholder="5" aria-label="Height feet"><em>ft</em></div>
+          <div class="unit"><input type="number" id="b-in" inputmode="decimal" min="0" max="11.9" step="0.5" placeholder="10" aria-label="Height inches"><em>in</em></div>
+        </div>
+      </div>
+      <div class="field"><label for="b-act">Activity</label>
+        <select id="b-act">
+          <option value="sedentary">Mostly sitting, little exercise</option>
+          <option value="light" selected>Lightly active, 1–3 workouts a week</option>
+          <option value="active">Active, 3–5 workouts a week</option>
+          <option value="very">Very active, hard training 6–7 days or a physical job</option>
+        </select>
+      </div>
+      <div class="field"><label for="b-goal">Goal</label>
+        <select id="b-goal">
+          <option value="lose">Lose about 1 lb a week</option>
+          <option value="lose_slow">Lose about ½ lb a week</option>
+          <option value="maintain" selected>Maintain weight</option>
+          <option value="gain">Gain slowly (lean bulk)</option>
+        </select>
+      </div>
+      <details class="alln" open>
+        <summary>Tape measurements &amp; custom goal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
+        <div class="pad">
+          <p class="fine">Neck and waist (plus hips for women) give a body-fat estimate from the U.S. Navy tape formula. Measure the waist at the navel, relaxed, and the neck just below the Adam's apple.</p>
+          <div class="grid3">
+            <div class="field"><label for="b-neck">Neck</label><div class="unit"><input type="number" id="b-neck" inputmode="decimal" step="0.25" placeholder="15"><em>in</em></div></div>
+            <div class="field"><label for="b-waist">Waist</label><div class="unit"><input type="number" id="b-waist" inputmode="decimal" step="0.25" placeholder="32"><em>in</em></div></div>
+            <div class="field" id="hip-field"><label for="b-hip">Hips</label><div class="unit"><input type="number" id="b-hip" inputmode="decimal" step="0.25" placeholder="38"><em>in</em></div></div>
+          </div>
+          <div class="field"><label for="b-kcal">Custom daily calories <span class="hint">(blank uses the calculated goal)</span></label><div class="unit"><input type="number" id="b-kcal" inputmode="numeric" step="10" placeholder="Auto"><em>kcal</em></div></div>
+        </div>
+      </details>
+      <button type="button" class="btn primary" id="b-save" data-action="body-save">Save stats</button>
+    </div>
+    <div id="body-stats" class="view"></div>
+    <div class="sec" id="hist-sec" hidden>
+      <h2 class="h">Check-ins</h2>
+      <div class="tblwrap"><table class="hist tnum" id="hist"></table></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Backup &amp; about</h2>
+      <p class="fine">Everything you log stays on this phone. Export a backup now and then so you can restore it on a new phone or after clearing Chrome's data.</p>
+      <div class="row2">
+        <button type="button" class="btn ghost" data-action="export">Export backup</button>
+        <button type="button" class="btn ghost" data-action="import">Restore backup</button>
+      </div>
+      <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
+      <p class="fine" id="rec-about"></p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode data: Open Food Facts, available under the Open Database License. Food recognizer: OpenAI CLIP, run on your phone with Transformers.js. Estimates are for tracking, not medical advice.</p>
+    </div>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="Sections">
+  <div class="tabs-in">
+    <button type="button" class="tab" data-action="tab" data-tab="today" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/><path d="M8.5 12.5h7M8.5 9h4M8.5 16h5.5"/></svg>Today</button>
+    <button type="button" class="tab-scan" data-action="tab" data-tab="scan" aria-label="Add food"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+    <button type="button" class="tab" data-action="tab" data-tab="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M8 21v-6l-2-1 1.5-5.5h9L18 14l-2 1v6"/></svg>Body</button>
+  </div>
+</nav>
+<div class="toast" id="toast" role="status" hidden></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
