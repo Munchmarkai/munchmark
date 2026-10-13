@@ -1,9 +1,9 @@
 // Offline support: the app shell, food data and recognizer runtime are cached on install.
 // The recognizer's model files are cached separately by Transformers.js after the first download.
-const VERSION = 'macrolens-v1';
+const VERSION = 'macrolens-v2';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/search.js', 'js/labels.js', 'js/parse.js', 'js/store.js', 'js/recognizer.js',
+  'js/app.js', 'js/search.js', 'js/labels.js', 'js/parse.js', 'js/store.js', 'js/recognizer.js', 'js/planner.js', 'js/week.js', 'js/wrapped.js',
   'data/foods.json', 'fonts/archivo.woff2', 'fonts/figtree.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/maskable-512.png',
   'vendor/transformers.min.js', 'vendor/ort-wasm-simd-threaded.jsep.mjs', 'vendor/ort-wasm-simd-threaded.jsep.wasm',

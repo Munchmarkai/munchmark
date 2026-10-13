@@ -1,5 +1,8 @@
 import { buildIndex, search, tokens } from './search.js';
-import { LABELS } from './labels.js';
+import { LABELS, PANTRY } from './labels.js';
+import { mealIdeas, dayPlan, scaleT, roleOf } from './planner.js';
+import { summarize, weekStart, addDays, SPORTS } from './week.js';
+import { playWrapped } from './wrapped.js';
 import { parseMeal, labelByName } from './parse.js';
 import * as store from './store.js';
 
@@ -57,6 +60,9 @@ const S = {
   photo:null, rec:{state:'unknown', progress:0, text:'', results:null, busy:false, error:'', added:new Set()},
   bc:{stream:null, timer:0, busy:false},
   draft:{}, dirty:false,
+  pantry:[], pan:{photo:null, busy:false, step:0, steps:0, detect:null, sel:new Set(), ideas:null, plan:null, mode:'ideas'},
+  wk:{start:null, report:false}, bcTarget:null,
+  bf:{photo:null, busy:false, probs:null, level:null},
 };
 let DB = null, INDEX = null, BYID = null, R = null;
 
@@ -118,11 +124,15 @@ function altsFor(it){
 async function loadAll(){
   const all = await store.getAll();
   S.profile = all.profile || {};
+  S.pantry = Array.isArray(all.pantry) ? all.pantry : [];
   S.days = {};
   for (const [k, v] of Object.entries(all)) if (k.startsWith('day-') && v && v.date) S.days[v.date] = v;
 }
 function saveDay(date){ const d = S.days[date]; store.put('day-' + date, d && d.entries.length ? d : null); }
 function saveProfile(){ store.put('profile', S.profile); }
+function savePantry(){ store.put('pantry', S.pantry); }
+const settings = () => (S.profile.settings ||= {});
+const wrappedOn = () => settings().wrapped !== false;
 
 /* ---------- targets & body math ---------- */
 const heightIn = p => num(p.ft) * 12 + num(p.inch);
@@ -196,6 +206,7 @@ function nfHTML(t, serving){
 
 /* ---------- render: today ---------- */
 function renderToday(){
+  renderBanner();
   const date = S.viewDate, isToday = date === dayKey();
   $('#day-title').textContent = relDay(date);
   $('#day-sub').textContent = isToday || date === shift(dayKey(), -1) ? longDay(date) : String(toDate(date).getFullYear());
@@ -339,19 +350,19 @@ async function recognizer(){ if (!R) R = await import('./recognizer.js'); return
 async function checkRecognizer(){
   try { const r = await recognizer(); S.rec.state = (await r.isDownloaded()) ? 'ready' : 'missing'; }
   catch { S.rec.state = 'error'; S.rec.error = 'The recognizer could not start in this browser. Typing and barcodes still work.'; }
-  renderPhoto();
+  renderPhoto(); if (S.tab === 'pantry') renderPantry();
 }
 async function downloadRecognizer(){
   if (!navigator.onLine) { S.rec.state = 'error'; S.rec.error = 'You’re offline. Connect to Wi-Fi to download the recognizer.'; renderPhoto(); return; }
-  Object.assign(S.rec, {state:'loading', progress:0, text:'Starting download…'}); renderPhoto();
+  Object.assign(S.rec, {state:'loading', progress:0, text:'Starting download…'}); renderPhoto(); if (S.tab === 'pantry') renderPantry();
   try {
     const r = await recognizer();
     await r.load((p, text) => { S.rec.progress = p; S.rec.text = text; const b = $('#rec-bar'), tx = $('#rec-text'); if (b) b.style.width = Math.round(p * 100) + '%'; if (tx) tx.textContent = text; });
-    S.rec.state = 'ready'; renderPhoto(); toast('Recognizer ready. It now works offline.');
+    S.rec.state = 'ready'; renderPhoto(); if (S.tab === 'pantry') renderPantry(); if (S.tab === 'body') { renderBodyPhoto(); if (S.bf.photo && !S.bf.probs) setBodyPhotoAgain(); } toast('Recognizer ready. It now works offline.');
     if (S.photo && !S.rec.results) classifyPhoto();
   } catch (e) {
     console.error(e);
-    S.rec.state = 'error'; S.rec.error = 'The download didn’t finish. Check your connection and try again.'; renderPhoto();
+    S.rec.state = 'error'; S.rec.error = 'The download didn’t finish. Check your connection and try again.'; renderPhoto(); if (S.tab === 'pantry') renderPantry();
   }
 }
 async function classifyPhoto(){
@@ -455,6 +466,11 @@ async function lookupBarcode(code){
     const opts = [];
     if (sq) opts.push({t: tidy(pr.serving_size) || `1 serving`, g: sq});
     opts.push({t:'1 oz', g:28.35}, {t:'100 g', g:100}, {t:'grams', g:1});
+    if (S.bcTarget === 'pantry') {
+      S.bcTarget = null; bcMsg('');
+      addPantry({key:'off' + code, src:'off', code, name, p, unitG: sq || 0, unitD: sq ? (tidy(pr.serving_size) || '1 serving') : '', group:0});
+      setTab('pantry'); toast(`Added ${name} to your pantry`); return;
+    }
     addToPlate([{id:uid(), src:'off', code, name, sub:`Barcode ${code} · Open Food Facts`, p, opts, opt:0, qty: sq ? 1 : 1}]);
     bcMsg(`Added ${name}${sq ? '' : '. No serving size listed, so it’s set to 1 oz; adjust it on your plate.'}`);
   } catch { bcMsg('Couldn’t reach Open Food Facts. Check your connection and try again.', true); }
@@ -495,11 +511,13 @@ function runSearch(){
 /* ---------- body ---------- */
 function fillBodyForm(){
   const p = S.profile;
-  S.draft = {sex:p.sex || '', age:p.age || '', ft:p.ft || '', inch:p.inch ?? '', weightLb:p.weightLb || '', activity:p.activity || 'light', goal:p.goal || 'maintain', customKcal:p.customKcal || '', neck:p.neck || '', waist:p.waist || '', hip:p.hip || ''};
+  S.draft = {sex:p.sex || '', age:p.age || '', ft:p.ft || '', inch:p.inch ?? '', weightLb:p.weightLb || '', activity:p.activity || 'light', goal:p.goal || 'maintain', customKcal:p.customKcal || '', neck:p.neck || '', waist:p.waist || '', hip:p.hip || '', sport:p.sport || 'none', trainingDays:p.trainingDays ?? 0};
   const d = S.draft;
   $('#b-age').value = d.age; $('#b-ft').value = d.ft; $('#b-in').value = d.inch; $('#b-wt').value = d.weightLb;
   $('#b-act').value = d.activity; $('#b-goal').value = d.goal; $('#b-kcal').value = d.customKcal;
   $('#b-neck').value = d.neck; $('#b-waist').value = d.waist; $('#b-hip').value = d.hip;
+  $('#b-sport').value = d.sport; $('#b-days').value = String(d.trainingDays || 0);
+  $('#set-wrapped').checked = wrappedOn();
   syncSex();
 }
 function syncSex(){ $$('[data-action="sex"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sex === S.draft.sex))); $('#hip-field').hidden = S.draft.sex === 'male'; }
@@ -508,6 +526,7 @@ function readForm(){
   d.age = $('#b-age').value; d.ft = $('#b-ft').value; d.inch = $('#b-in').value; d.weightLb = $('#b-wt').value;
   d.activity = $('#b-act').value; d.goal = $('#b-goal').value; d.customKcal = $('#b-kcal').value;
   d.neck = $('#b-neck').value; d.waist = $('#b-waist').value; d.hip = $('#b-hip').value;
+  d.sport = $('#b-sport').value; d.trainingDays = Number($('#b-days').value) || 0;
 }
 function scaleBar(min, max, bands, colors, value, labels){
   const pos = Math.max(0, Math.min(100, (value - min) / (max - min) * 100));
@@ -528,13 +547,9 @@ function renderBody(){
         <div class="stat-big" style="margin-top:4px"><b class="tnum">${int(c.goal)}</b><span class="sub">kcal a day${c.custom ? ' (custom)' : ''}</span></div>
         <div class="mtargets tnum"><div style="--c:var(--protein)"><span>Protein</span><b>${c.protein} g</b></div><div style="--c:var(--carbs)"><span>Carbs</span><b>${c.carbs} g</b></div><div style="--c:var(--fat)"><span>Fat</span><b>${c.fat} g</b></div></div>
         <p class="fine">${c.floorHit ? 'The goal is held at a minimum so the deficit stays safe. ' : ''}Mifflin-St Jeor formula. Protein is 1.6 g per kg of body weight, fat 28% of calories, carbs fill the rest.</p></div>
-      ${navy ? `<div class="card sec"><h3 class="h">Body fat (tape measure)</h3>
-        <div class="stat-big"><b class="tnum">${navy.toFixed(1)}%</b><span class="pill">${bfCat(d.sex, navy)}</span></div>
-        ${scaleBar(B.min, B.max, B.bands, ['color-mix(in oklab,var(--carbs) 70%,var(--surface-2))','var(--good)','color-mix(in oklab,var(--good) 55%,var(--surface-2))','color-mix(in oklab,var(--muted) 45%,var(--surface-2))','color-mix(in oklab,var(--warn) 75%,var(--surface-2))'], navy, B.bands.map(x => x[2]))}
-        ${w ? `<div class="kv tnum"><div><span>Lean mass</span><b>${int(w * (1 - navy / 100))} lb</b></div><div><span>Fat mass</span><b>${int(w * navy / 100)} lb</b></div></div>` : ''}
-        <p class="fine">U.S. Navy circumference formula. Usually within a few percentage points of a DEXA scan when measured carefully.</p></div>`
-      : `<div class="card sec"><h3 class="h">Body fat</h3><p class="fine" style="font-size:13.5px">Add your neck and waist${d.sex === 'female' ? ' and hips' : ''} under Tape measurements to get a body-fat estimate.</p></div>`}`;
+`;
   }
+  renderBodyPhoto();
   const list = (S.profile.checkins || []).slice().sort((a, b) => b.date < a.date ? -1 : 1).slice(0, 12);
   $('#hist-sec').hidden = !list.length;
   $('#hist').innerHTML = `<thead><tr><th>Date</th><th>Weight</th><th>BMI</th><th>Body fat</th></tr></thead><tbody>${list.map(c => `<tr><td>${esc(shortDay(c.date))}</td><td>${c.weightLb ? dec(num(c.weightLb)) + ' lb' : '—'}</td><td>${c.bmi ? num(c.bmi).toFixed(1) : '—'}</td><td>${c.bfp ? num(c.bfp).toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody>`;
@@ -543,18 +558,105 @@ function saveStats(){
   readForm();
   const d = S.draft, c = calcBody(d), navy = navyBF(d);
   const p = Object.assign({}, S.profile, {sex:d.sex, age:num(d.age) || '', ft:num(d.ft) || '', inch:d.inch === '' ? '' : Number(d.inch) || 0, weightLb:num(d.weightLb) || '',
-    activity:d.activity, goal:d.goal, customKcal:num(d.customKcal) || '', neck:num(d.neck) || '', waist:num(d.waist) || '', hip:num(d.hip) || ''});
+    activity:d.activity, goal:d.goal, customKcal:num(d.customKcal) || '', neck:num(d.neck) || '', waist:num(d.waist) || '', hip:num(d.hip) || '', sport:d.sport || 'none', trainingDays:d.trainingDays || 0});
   if (c) {
     const today = dayKey(), list = (p.checkins || []).filter(x => x.date !== today);
-    list.push({date:today, weightLb:num(d.weightLb), bmi:Math.round(c.bmi * 10) / 10, bfp: navy ? Math.round(navy * 10) / 10 : 0});
+    const prev = (p.checkins || []).find(x => x.date === today);
+    const blend = bfBlend(d);
+    list.push({date:today, weightLb:num(d.weightLb), bmi:Math.round(c.bmi * 10) / 10, bfp: blend ? Math.round(blend.v * 10) / 10 : (prev?.bfp || 0)});
     p.checkins = list.sort((a, b) => a.date < b.date ? -1 : 1).slice(-120);
   }
   S.profile = p; S.dirty = false; saveProfile(); renderBody(); renderToday();
 }
 
+
+/* ---------- body-fat photo check ---------- */
+const BF_LEVELS = {
+  male: [[8, 'Clear six-pack and visible veins on the arms and lower stomach; shoulder muscles look separated.'],
+         [12, 'Abs show in good light; flat stomach; some veins on the arms.'],
+         [15, 'Faint outline of the upper abs; little fat at the waist; muscles visible but softer.'],
+         [20, 'No visible abs; slight softness at the waist and lower back.'],
+         [25, 'Rounder waist; some fat at the sides and chest; no definition at the stomach.'],
+         [30, 'Stomach sticks out a little; fat at the chest, back and hips.'],
+         [36, 'Waist is the widest part of the torso; fat spread across chest, back and arms.']],
+  female: [[15, 'Visible abs and muscle lines; very little fat at the hips and thighs.'],
+           [20, 'Some ab outline; toned arms and legs; a little fat at the hips.'],
+           [25, 'Flat but soft stomach; curves at the hips and thighs; little muscle definition.'],
+           [30, 'Softer stomach; more fat at the hips, thighs and upper arms.'],
+           [35, 'Rounder stomach; fuller hips, thighs and arms.'],
+           [40, 'Stomach sticks out; fat across the waist, hips, thighs and arms.'],
+           [46, 'Waist is the widest part of the torso; fat spread across the whole body.']],
+};
+// Deurenberg BMI equation (adult and child versions)
+function bmiBF(p){
+  const c = calcBody(p); if (!c) return null;
+  const age = num(p.age), male = p.sex === 'male' ? 1 : 0;
+  const v = age < 16 ? 1.51 * c.bmi - 0.70 * age - 3.6 * male + 1.4 : 1.20 * c.bmi + 0.23 * age - 10.8 * male - 5.4;
+  return v > 3 && v < 65 ? v : null;
+}
+function bfBlend(d){
+  const est = [];
+  const navy = navyBF(d); if (navy) est.push({name:'Tape measure (U.S. Navy)', v:navy, w:0.45});
+  const lv = S.bf.level != null ? (BF_LEVELS[d.sex] || BF_LEVELS.male)[S.bf.level] : null;
+  if (lv) est.push({name:'Photo check', v:lv[0], w:0.35});
+  const b = bmiBF(d); if (b) est.push({name:'BMI formula', v:b, w:0.2});
+  if (!est.length) return null;
+  const W = est.reduce((a, e) => a + e.w, 0), v = est.reduce((a, e) => a + e.v * e.w, 0) / W;
+  const spread = Math.max(...est.map(e => e.v)) - Math.min(...est.map(e => e.v));
+  const half = Math.max(2.5, Math.min(6, spread / 2 + (est.length === 1 ? 2 : 0.5)));
+  return {v, low: v - half, high: v + half, est};
+}
+function renderBodyPhoto(){
+  const d = S.draft, b = S.bf, out = $('#bf-out');
+  const frame = $('#bfframe'); frame.classList.toggle('has-photo', !!b.photo); frame.classList.toggle('scanning', b.busy);
+  $('#bfframe-img').hidden = !b.photo; if (b.photo && $('#bfframe-img').src !== b.photo.url) $('#bfframe-img').src = b.photo.url;
+  $('#bfframe-empty').hidden = !!b.photo; $('#bf-clear').hidden = !b.photo || b.busy;
+  if (d.sex !== 'male' && d.sex !== 'female') { out.innerHTML = '<p class="fine">Pick your sex in Your stats first; the guide is different for men and women.</p>'; return; }
+  const L = BF_LEVELS[d.sex];
+  const sug = b.probs ? b.probs.indexOf(Math.max(...b.probs)) : -1;
+  let rec = '';
+  if (b.photo && b.busy) rec = `<div class="recbox"><span><span class="spin"></span> <b>Looking at your photo…</b></span></div>`;
+  else if (b.photo && !b.probs && S.rec.state !== 'ready' && S.rec.state !== 'loading') rec = `<div class="recbox"><span><b>Want a suggestion?</b><br><span class="sub">Download the recognizer once and it will suggest a level from your photo. Or just pick the closest description below.</span></span><button type="button" class="btn ghost" data-action="rec-download">Download recognizer</button></div>`;
+  const res = bfBlend(d);
+  out.innerHTML = `${rec}
+    <p class="fine">${b.photo ? 'Compare your photo with these and tap the closest match.' : 'Take a photo, or tap the description that fits you best.'}${sug >= 0 ? ' The recognizer’s suggestion is marked; it’s a rough guess, so trust your eyes.' : ''}</p>
+    <ul class="levels">${L.map(([v, cue], i) => `<li><button type="button" data-action="bf-level" data-i="${i}" aria-pressed="${b.level === i}"><b>${i === L.length - 1 ? v + '%+' : '~' + v + '%'}</b><span>${i === sug ? '<em>Suggested from your photo</em><br>' : ''}${esc(cue)}</span></button></li>`).join('')}</ul>
+    ${res ? `<div class="card sec"><h3 class="h">Your body fat estimate</h3>
+      <div class="stat-big"><b class="tnum">${Math.round(res.v)}%</b><span class="sub tnum">likely ${Math.round(res.low)}–${Math.round(res.high)}%</span><span class="pill">${bfCat(d.sex, res.v)}</span></div>
+      <ul class="methods tnum">${res.est.map(e => `<li><span>${esc(e.name)}</span><span>${e.v.toFixed(1)}%</span></li>`).join('')}</ul>
+      ${num(d.weightLb) ? `<div class="kv tnum"><div><span>Lean mass</span><b>${int(num(d.weightLb) * (1 - res.v / 100))} lb</b></div><div><span>Fat mass</span><b>${int(num(d.weightLb) * res.v / 100)} lb</b></div></div>` : ''}
+      <p class="fine">${res.est.length < 3 ? 'Add ' + [!navyBF(d) && 'tape measurements', S.bf.level == null && 'a photo check'].filter(Boolean).join(' and ') + ' for a tighter estimate. ' : ''}Blends every method you've filled in. Within a few points of a DEXA scan when measured carefully.</p>
+      <button type="button" class="btn primary" data-action="bf-save">Save to check-ins</button></div>` : ''}`;
+}
+async function setBodyPhoto(file){
+  if (!file) return;
+  try { const ph = await prepPhoto(file); if (S.bf.photo) URL.revokeObjectURL(S.bf.photo.url); S.bf.photo = ph; S.bf.probs = null; } catch { toast('Couldn’t open that photo. Try a JPEG or PNG.'); return; }
+  renderBodyPhoto();
+  if (S.rec.state === 'unknown') await checkRecognizer();
+  if (S.rec.state !== 'ready' || (S.draft.sex !== 'male' && S.draft.sex !== 'female')) { renderBodyPhoto(); return; }
+  S.bf.busy = true; renderBodyPhoto();
+  try {
+    const r = await recognizer();
+    S.bf.probs = await r.classifyBody(S.bf.photo.blob, S.draft.sex);
+    if (S.bf.level == null) S.bf.level = S.bf.probs.indexOf(Math.max(...S.bf.probs));
+  } catch (e) { console.error(e); toast('Couldn’t read that photo. Pick the closest description instead.'); }
+  finally { S.bf.busy = false; renderBodyPhoto(); }
+}
+function setBodyPhotoAgain(){ const ph = S.bf.photo; if (!ph) return; (async () => { S.bf.busy = true; renderBodyPhoto(); try { const r = await recognizer(); S.bf.probs = await r.classifyBody(ph.blob, S.draft.sex); if (S.bf.level == null) S.bf.level = S.bf.probs.indexOf(Math.max(...S.bf.probs)); } catch {} finally { S.bf.busy = false; renderBodyPhoto(); } })(); }
+function saveBodyFat(){
+  readForm();
+  const res = bfBlend(S.draft); if (!res) return;
+  const c = calcBody(S.draft), today = dayKey(), p = S.profile;
+  const list = (p.checkins || []).filter(x => x.date !== today);
+  list.push({date:today, weightLb:num(S.draft.weightLb) || '', bmi: c ? Math.round(c.bmi * 10) / 10 : 0, bfp: Math.round(res.v * 10) / 10});
+  p.checkins = list.sort((a, b) => a.date < b.date ? -1 : 1).slice(-120);
+  p.lastBody = {date:today, pct:Math.round(res.v * 10) / 10, low:Math.round(res.low), high:Math.round(res.high)};
+  saveProfile(); renderBody(); toast(`Saved ${Math.round(res.v)}% body fat to check-ins`);
+}
+
 /* ---------- backup ---------- */
 function exportBackup(){
-  const data = JSON.stringify({app:'macro-lens', version:1, exported:new Date().toISOString(), profile:S.profile, days:S.days});
+  const data = JSON.stringify({app:'macro-lens', version:1, exported:new Date().toISOString(), profile:S.profile, days:S.days, pantry:S.pantry});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
   a.download = `macro-lens-backup-${dayKey()}.json`;
@@ -569,19 +671,224 @@ async function importBackup(file){
     let n = 0;
     for (const [k, v] of Object.entries(j.days)) { if (v && v.date === k && Array.isArray(v.entries)) { S.days[k] = v; saveDay(k); n++; } }
     if (j.profile && typeof j.profile === 'object') { S.profile = j.profile; saveProfile(); fillBodyForm(); }
+    if (Array.isArray(j.pantry)) { S.pantry = j.pantry; savePantry(); }
     renderToday(); renderBody(); toast(`Restored ${n} day${n === 1 ? '' : 's'} of meals`);
   } catch { toast('That file isn’t a Macro Lens backup.'); }
+}
+
+
+/* ---------- weekly recap ---------- */
+function bodyInfo(){
+  const p = S.profile, c = calcBody(p);
+  return {kg: c ? c.kg : 0, sport: p.sport || 'none', trainingDays: p.trainingDays || 0, goal: p.goal || 'maintain', sex: p.sex, age: num(p.age)};
+}
+const weekOf = start => summarize(S.days, start, targets(), bodyInfo());
+function rangeText(start){
+  const a = toDate(start), b = toDate(addDays(start, 6));
+  const m1 = a.toLocaleDateString(undefined, {month:'short'}), m2 = b.toLocaleDateString(undefined, {month:'short'});
+  return m1 === m2 ? `${m1} ${a.getDate()} – ${b.getDate()}` : `${m1} ${a.getDate()} – ${m2} ${b.getDate()}`;
+}
+function lastWeekStart(){ return addDays(weekStart(dayKey()), -7); }
+function renderBanner(){
+  const el = $('#wrap-banner'); if (!el) return;
+  const ls = lastWeekStart();
+  const has = Array.from({length:7}, (_, i) => addDays(ls, i)).some(k => (S.days[k]?.entries || []).length);
+  if (!has || settings().seenWeek === ls) { el.innerHTML = ''; return; }
+  el.innerHTML = `<button type="button" class="banner" data-action="banner"><span><b>${wrappedOn() ? 'Your week is wrapped' : 'Your weekly recap is ready'}</b><small>${esc(rangeText(ls))} · tap to ${wrappedOn() ? 'play' : 'see it'}</small></span>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${wrappedOn() ? '<path d="M8 5.5v13l10.5-6.5z"/>' : '<path d="M5 20V12h3v8zm5 0V6h3v14zm5 0v-9h3v9z"/>'}</svg></button>`;
+}
+function playWeek(start){
+  const s = weekOf(start);
+  if (!s.loggedDays) { toast('Log some meals this week first'); return; }
+  playWrapped(s, {
+    onClose: () => { if (start === lastWeekStart()) { settings().seenWeek = start; saveProfile(); renderBanner(); } },
+    onReport: () => { S.wk.start = start; S.wk.report = true; setTab('week'); },
+  });
+}
+function renderWeek(){
+  const cur = weekStart(dayKey());
+  if (!S.wk.start) S.wk.start = cur;
+  const start = S.wk.start, s = weekOf(start), g = s.target;
+  $('#wk-title').textContent = start === cur ? 'This week' : start === addDays(cur, -7) ? 'Last week' : rangeText(start);
+  $('#wk-sub').textContent = start === cur ? `${rangeText(start)} · so far` : rangeText(start);
+  $('#wk-next').disabled = start >= cur;
+  const body = $('#wk-body');
+  if (wrappedOn() && !S.wk.report) {
+    body.innerHTML = `<div class="wk-cover"><svg class="wr-deco" viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke-width="2"><circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="64"/><circle cx="100" cy="100" r="30"/></svg>
+        <p class="eb">${start === cur ? 'So far this week' : 'Your week, wrapped'}</p>
+        <h2>${esc(rangeText(start))}</h2>
+        <div class="wk-quick tnum"><span><b>${s.loggedDays}</b>days logged</span><span><b>${s.loggedDays ? int(s.avg[0]) : '—'}</b>avg calories</span><span><b>${s.proteinDays}</b>protein days</span></div>
+        <button type="button" class="play" data-action="wk-play" ${s.loggedDays ? '' : 'disabled'}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>${s.loggedDays ? 'Play your week' : 'Log meals to unlock'}</button></div>
+      <p class="fine">Your recap plays as full-screen stories: each day, your averages, top foods and tips for next week. Prefer a plain report? <button type="button" class="linkbtn" data-action="wk-report">Show it here</button> or turn off Wrapped style in Body → Settings.</p>`;
+    return;
+  }
+  if (!s.loggedDays) { body.innerHTML = `<div class="empty"><b>Nothing logged this week</b><p>Log meals on a few days and this page fills in with daily totals, averages, top foods and tips.</p></div>`; return; }
+  const a = s.avg, row = (l, v, t, u) => `<li class="nrow"><span>${l}</span><span class="tnum">${u === 'mg' ? int(v) : dec(v)} ${u}${t ? ` <em>· ${Math.round(v / t * 100)}%</em>` : ''}</span><div class="bar"><i style="width:${t ? Math.min(100, v / t * 100) : 0}%"></i></div></li>`;
+  body.innerHTML = `${S.wk.report && wrappedOn() ? `<button type="button" class="btn ghost sm" data-action="wk-cover">Back to Wrapped view</button>` : ''}
+    <div class="card sec">
+      <h3 class="h">Daily average</h3>
+      <div class="stat-big"><b class="tnum">${int(a[0])}</b><span class="sub">calories · goal ${int(g.calories)}</span></div>
+      <div class="kv tnum"><div><span>Days logged</span><b>${s.loggedDays} of 7</b></div><div><span>Protein goal hit</span><b>${s.proteinDays} days</b></div><div><span>Calories on target</span><b>${s.kcalDays} days</b></div><div><span>Longest streak</span><b>${s.streak} days</b></div></div>
+    </div>
+    <div class="sec"><h3 class="h">Day by day</h3><div class="card"><ul class="wk-days tnum">${s.days.map(d => {
+      const P = d.t[1] * 4, C = d.t[2] * 4, F = d.t[3] * 9, sum = P + C + F || 1;
+      return `<li class="${d.logged ? '' : 'off'}"><span><b>${toDate(d.date).toLocaleDateString(undefined, {weekday:'short'})}</b><small>${toDate(d.date).getDate()}</small></span>
+        <span><span class="stack">${d.logged ? `<i class="p" style="flex:${P / sum}"></i><i class="c" style="flex:${C / sum}"></i><i class="f" style="flex:${F / sum}"></i>` : ''}</span><small>${d.logged ? `P ${int(d.t[1])} · C ${int(d.t[2])} · F ${int(d.t[3])}` : 'not logged'}${s.bestDay && s.bestDay.date === d.date ? ' · <span class="badge">best day</span>' : ''}</small></span>
+        <em>${d.logged ? int(d.t[0]) : '—'}<small>kcal</small></em></li>`; }).join('')}</ul></div></div>
+    <div class="sec"><h3 class="h">Averages</h3><ul class="nlist card" style="padding:4px 14px">
+      ${row('Protein', a[1], g.protein_g, 'g')}${row('Carbs', a[2], g.carbs_g, 'g')}${row('Fat', a[3], g.fat_g, 'g')}${row('Fiber', a[4], 28, 'g')}${row('Sodium (limit)', a[8], 2300, 'mg')}${row('Potassium', a[9], 4700, 'mg')}${row('Sugars', a[5], 0, 'g')}
+    </ul></div>
+    ${s.topFoods.length ? `<div class="sec"><h3 class="h">Top foods</h3><div class="card"><ol class="topfoods">${s.topFoods.map(f => `<li><span>${esc(f.name)}</span><em>×${f.count}</em></li>`).join('')}</ol></div></div>` : ''}
+    <div class="sec"><h3 class="h">Suggestions for next week</h3><ul class="tips">${s.suggestions.map(t => `<li class="${t.tone}"><b>${esc(t.title)}</b>${esc(t.text)}</li>`).join('')}</ul>
+    <p class="fine">Based on your goals${S.profile.sport && S.profile.sport !== 'none' ? ` and ${esc(SPORTS[S.profile.sport]?.label.toLowerCase() || 'sport')}` : ''}. Set your sport in Body for sport-specific tips.</p></div>`;
+}
+
+/* ---------- pantry & meal ideas ---------- */
+let NDB_UNIT = null;
+function friendlyUnit(ndb, f){
+  if (!NDB_UNIT) { NDB_UNIT = new Map(); for (const l of LABELS) if (l[1].length === 1 && /^1 /.test(l[2]) && !NDB_UNIT.has(l[1][0][0])) NDB_UNIT.set(l[1][0][0], [l[1][0][1], l[2]]); }
+  const u = NDB_UNIT.get(ndb), n = f.length;
+  return u ? {unitG:u[0], unitD:u[1]} : {unitG:f[n-4] || 0, unitD:f[n-3] || ''};
+}
+function pantryFood(ndb, name, role){
+  const f = BYID.get(ndb); if (!f) return null;
+  return {key:'ndb' + ndb, ndb, name: name || friendly(ndb) || shortName(f[1]), role: role || null, group:f[2], p:p100Of(f), ...friendlyUnit(ndb, f), src:'usda'};
+}
+function addPantry(food){
+  if (!food) return false;
+  if (S.pantry.some(x => x.key === food.key)) return false;
+  if (!food.role) food.role = roleOf(food);
+  S.pantry.push(food); savePantry(); S.pan.ideas = null; S.pan.plan = null;
+  return true;
+}
+const ROLE_LABEL = {protein:'Protein', dairy:'Dairy & milk', carb:'Carbs & grains', veg:'Vegetables', fruit:'Fruit', fat:'Fats, nuts & cheese', meal:'Ready meals', snack:'Snacks (not used in meal ideas)'};
+function readGoals(){
+  const g = (S.profile.planGoals ||= {});
+  g.calories = num($('#g-kcal').value); g.protein_g = num($('#g-p').value); g.carbs_g = num($('#g-c').value); g.fat_g = num($('#g-f').value);
+  clearTimeout(readGoals.t); readGoals.t = setTimeout(saveProfile, 400);
+}
+function planGoals(){
+  const g = S.profile.planGoals || {}, t = targets();
+  return {calories: num(g.calories) || t.calories, protein_g: num(g.protein_g) || t.protein_g, carbs_g: num(g.carbs_g) || t.carbs_g, fat_g: num(g.fat_g) || t.fat_g};
+}
+const planOpts = () => ({meals: 3, snack: true, lowSodium: false, highFiber: false, ...(S.profile.planOpts || {})});
+function renderPantry(){
+  const p = S.pan;
+  const frame = $('#pframe'); frame.classList.toggle('has-photo', !!p.photo); frame.classList.toggle('scanning', p.busy);
+  $('#pframe-img').hidden = !p.photo; if (p.photo && $('#pframe-img').src !== p.photo.url) $('#pframe-img').src = p.photo.url;
+  $('#pframe-empty').hidden = !!p.photo;
+  const r = S.rec; let st = '';
+  if (r.state === 'missing' || r.state === 'error') st = `<div class="recbox"><span><b>Food recognizer</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : 'Downloads once (about 150 MB, Wi-Fi recommended), then reads groceries offline. You can also add foods by name or barcode below.'}</span></span><button type="button" class="btn primary" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download recognizer'}</button></div>`;
+  else if (r.state === 'loading') st = `<div class="recbox"><span><span class="spin"></span> <b id="rec-text">${esc(r.text || 'Starting…')}</b></span><div class="progress"><i id="rec-bar" style="width:${Math.round(r.progress * 100)}%"></i></div></div>`;
+  else if (p.busy) st = `<div class="recbox"><span><span class="spin"></span> <b id="pan-step">Looking at your groceries… ${p.step} of ${p.steps || 10}</b></span><div class="progress"><i id="pan-bar" style="width:${Math.round(p.step / (p.steps || 10) * 100)}%"></i></div></div>`;
+  $('#pan-status').innerHTML = st;
+  renderDetect();
+  $('#pan-count').textContent = S.pantry.length ? `${S.pantry.length} item${S.pantry.length === 1 ? '' : 's'}` : '';
+  $('#pan-clear').hidden = !S.pantry.length;
+  const groups = {};
+  for (const f of S.pantry) (groups[f.role || roleOf(f)] ||= []).push(f);
+  $('#pan-list').innerHTML = S.pantry.length ? Object.keys(ROLE_LABEL).filter(k => groups[k]).map(k => `<div class="pgroup"><span class="lbl">${ROLE_LABEL[k]}</span><div class="chips">${groups[k].map(f => `<span class="pchip">${esc(f.name)}<button type="button" data-action="pan-del" data-key="${esc(f.key)}" aria-label="Remove ${esc(f.name)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></span>`).join('')}</div></div>`).join('')
+    : `<div class="empty"><b>Your pantry is empty</b><p>Snap your cabinet or groceries, or add foods by name or barcode. Meal ideas use only what's here.</p></div>`;
+  const g = planGoals(), o = planOpts();
+  for (const [id, k] of [['g-kcal','calories'],['g-p','protein_g'],['g-c','carbs_g'],['g-f','fat_g']]) { const el = $('#' + id); if (document.activeElement !== el) el.value = Math.round(g[k]); }
+  $$('[data-action="pan-meals"]').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === o.meals)));
+  $$('[data-action="pan-opt"]').forEach(b => b.setAttribute('aria-pressed', String(!!o[b.dataset.opt])));
+  renderIdeas();
+}
+function renderDetect(){
+  const p = S.pan, el = $('#pan-detect');
+  if (!p.detect || p.busy) { el.innerHTML = ''; return; }
+  if (!p.detect.length) { el.innerHTML = `<p class="notice">Couldn't pick out any groceries. Try a closer photo with labels facing the camera, or add foods by name below.</p>`; return; }
+  const n = p.sel.size;
+  el.innerHTML = `<div class="card sec"><div class="sec-head"><h3 class="h">Spotted in your photo</h3><span class="sub">Uncheck anything wrong</span></div>
+    <ul class="detect">${p.detect.map(d => `<li><label><input type="checkbox" data-det="${esc(d.name)}" ${p.sel.has(d.name) ? 'checked' : ''}><span>${esc(d.name)}</span><em>${d.p >= 0.5 ? 'sure' : d.p >= 0.25 ? 'likely' : 'maybe'}</em></label></li>`).join('')}</ul>
+    <button type="button" class="btn primary" data-action="pan-add-detected" ${n ? '' : 'disabled'}>Add ${n} to pantry</button></div>`;
+}
+async function scanPantry(file){
+  if (!file) return;
+  try { const ph = await prepPhoto(file); if (S.pan.photo) URL.revokeObjectURL(S.pan.photo.url); S.pan.photo = ph; } catch { toast('Couldn’t open that photo. Try a JPEG or PNG.'); return; }
+  S.pan.detect = null; renderPantry();
+  if (S.rec.state !== 'ready') { if (S.rec.state === 'unknown') await checkRecognizer(); if (S.rec.state !== 'ready') { renderPantry(); toast('Download the recognizer first, or add foods by name'); return; } }
+  S.pan.busy = true; S.pan.step = 0; S.pan.steps = 10; renderPantry();
+  try {
+    const r = await recognizer();
+    const found = await r.classifyMany(S.pan.photo.blob, (i, n) => { S.pan.step = i; S.pan.steps = n; const t = $('#pan-step'), b = $('#pan-bar'); if (t) t.textContent = `Looking at your groceries… ${i} of ${n}`; if (b) b.style.width = Math.round(i / n * 100) + '%'; });
+    S.pan.detect = found.filter(d => !S.pantry.some(x => x.name === d.name));
+    S.pan.sel = new Set(S.pan.detect.filter(d => d.p >= 0.25).map(d => d.name));
+  } catch (e) { console.error(e); toast('Couldn’t read that photo. Try again or add foods by name.'); }
+  finally { S.pan.busy = false; renderPantry(); }
+}
+let panT = 0;
+function runPanSearch(){
+  const q = $('#pan-search').value.trim(), out = $('#pan-results');
+  if (q.length < 2) { out.innerHTML = ''; return; }
+  const qt = tokens(q);
+  const quick = PANTRY.filter(p => { const lt = tokens(p[0]); return qt.every(t => lt.some(w => w.startsWith(t))); }).slice(0, 5);
+  const usda = search(INDEX, q, 8).filter(f => !quick.some(p => p[2] === f[0]));
+  out.innerHTML = quick.map(p => `<li><button type="button" data-action="pan-add" data-ndb="${p[2]}" data-name="${esc(p[0])}" data-role="${p[3]}"><span><b><span class="tag">Quick</span>${esc(p[0])}</b><small>${esc(ROLE_LABEL[p[3]] || '')}</small></span><span class="k">Add</span></button></li>`).join('') +
+    usda.map(f => `<li><button type="button" data-action="pan-add" data-ndb="${f[0]}"><span><b>${esc(shortName(f[1]))}</b><small>${esc(f[1])}</small></span><span class="k">Add</span></button></li>`).join('') ||
+    `<li><p class="fine" style="padding:10px 0">No matches. Try a simpler word.</p></li>`;
+}
+function ideaHTML(idea, slot, idx){
+  const t = idea.totals, m = Math.round(idea.match);
+  return `<div class="idea"><div class="idea-top"><span>${slot ? `<small>${esc(MEAL_LABEL[slot])}</small>` : ''}<b>${esc(idea.name)}</b></span><span class="match ${m < 85 ? 'mid' : ''}">${m}% match</span></div>
+    <ul>${idea.parts.map(p => `<li><span>${esc(p.food.name)}</span><span>${esc(p.text)}${/ g$/.test(p.text) ? '' : ` · ${p.grams} g`}</span></li>`).join('')}</ul>
+    <p class="mac tnum"><b>${int(t[0])} kcal</b> · P ${int(t[1])} g · C ${int(t[2])} g · F ${int(t[3])} g · fiber ${dec(t[4])} g · sodium ${int(t[8])} mg</p>
+    <button type="button" class="btn ghost sm" data-action="idea-log" data-idx="${idx}" data-slot="${slot || ''}">Log this meal</button></div>`;
+}
+function renderIdeas(){
+  const out = $('#pan-out'), p = S.pan;
+  if (p.mode === 'day' && p.plan) {
+    const g = planGoals(), d = p.plan, t = d.totals;
+    S.pan.logList = d.plan.map(x => x.idea);
+    out.innerHTML = `<div class="sec-head"><h2 class="h">Your day</h2><span class="match ${d.match < 85 ? 'mid' : ''}">${Math.round(d.match)}% match</span></div>
+      ${d.plan.map((x, i) => ideaHTML(x.idea, x.slot, i)).join('')}
+      <div class="daytot tnum"><b>Day total:</b> ${int(t[0])} of ${int(g.calories)} kcal · P ${int(t[1])}/${int(g.protein_g)} g · C ${int(t[2])}/${int(g.carbs_g)} g · F ${int(t[3])}/${int(g.fat_g)} g</div>
+      <p class="fine">Built only from your pantry, with portions solved to land on your numbers. Cook and season to taste.</p>`;
+  } else if (p.mode === 'ideas' && p.ideas) {
+    S.pan.logList = p.ideas;
+    const o = planOpts(), share = o.snack ? 0.88 / o.meals : 1 / o.meals, mt = scaleT(planGoals(), share);
+    out.innerHTML = p.ideas.length ? `<div class="sec-head"><h2 class="h">Meal ideas</h2><span class="sub tnum">target ${int(mt.calories)} kcal · ${int(mt.protein_g)} g protein</span></div>
+      ${p.ideas.map((x, i) => ideaHTML(x, null, i)).join('')}
+      <p class="fine">Each idea is sized to one of your ${o.meals} meals${o.snack ? ' (with a daily snack set aside)' : ''}. Built only from your pantry. Cook and season to taste.</p>`
+      : `<p class="notice">Not enough to build meals yet. Add at least one protein (like eggs, chicken or Greek yogurt) and one carb (like rice, bread or oats).</p>`;
+  } else out.innerHTML = '';
+}
+function makeIdeas(mode){
+  const msg = $('#pan-msg'); msg.hidden = true;
+  if (S.pantry.length < 2) { msg.textContent = 'Add a few foods to your pantry first.'; msg.hidden = false; return; }
+  readGoals();
+  const g = planGoals(), o = planOpts();
+  if (!(g.calories > 300)) { msg.textContent = 'Set a daily calorie goal first.'; msg.hidden = false; return; }
+  S.pan.mode = mode;
+  const sodiumBudget = o.lowSodium ? 2300 / (o.meals + (o.snack ? 1 : 0)) : 0;
+  if (mode === 'day') S.pan.plan = dayPlan(S.pantry, g, o);
+  else S.pan.ideas = mealIdeas(S.pantry, scaleT(g, o.snack ? 0.88 / o.meals : 1 / o.meals), {...o, sodiumBudget, count: 8});
+  renderIdeas();
+  requestAnimationFrame(() => $('#pan-out').scrollIntoView({behavior: reduced() ? 'auto' : 'smooth', block:'start'}));
+}
+function logIdea(idea, slot){
+  const items = idea.parts.map(pt => {
+    const f = pt.food;
+    if (f.src === 'usda' && f.ndb) { const it = usdaItem(f.ndb, pt.grams, f.name, `${pt.text}${/ g$/.test(pt.text) ? '' : ` (${pt.grams} g)`}`); if (it) it.group = idea.name; return it; }
+    return {id:uid(), src:'off', code:f.code, name:f.name, sub:'Open Food Facts', group:idea.name, p:f.p, opts:[{t:pt.text, g:pt.grams}, {t:'100 g', g:100}, {t:'grams', g:1}], opt:0, qty:1};
+  }).filter(Boolean);
+  S.plate.push(...items); S.plateName = idea.name; if (slot) S.meal = slot;
+  setTab('scan'); toast('On your plate. Adjust portions, then add it to your log.');
 }
 
 /* ---------- tabs, toast ---------- */
 function setTab(t){
   S.tab = t;
-  ['today','scan','body'].forEach(v => $('#view-' + v).hidden = v !== t);
+  ['today','week','scan','pantry','body'].forEach(v => $('#view-' + v).hidden = v !== t);
   $$('.tabs [data-action="tab"]').forEach(b => b.dataset.tab === t ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   if (t !== 'scan') bcStop();
   if (t === 'today') renderToday();
   if (t === 'scan') { renderScan(); if (S.rec.state === 'unknown') checkRecognizer(); }
   if (t === 'body') renderBody();
+  if (t === 'week') renderWeek();
+  if (t === 'pantry') { renderPantry(); if (S.rec.state === 'unknown') checkRecognizer(); }
+  if (t !== 'scan' && S.bcTarget && t !== 'pantry') S.bcTarget = null;
   window.scrollTo({top:0});
 }
 let toastT;
@@ -642,9 +949,35 @@ document.addEventListener('click', e => {
       const kcal = entryTotals(entry).calories;
       S.plate = []; S.plateName = ''; if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.rec.added = new Set(); S.meal = defaultMeal();
       toast(`Added ${name} · ${int(kcal)} kcal`); setTab('today'); break; }
-    case 'sex': S.draft.sex = b.dataset.sex; S.dirty = true; syncSex(); renderBody(); break;
+    case 'sex': if (S.draft.sex !== b.dataset.sex) { S.bf.level = null; S.bf.probs = null; } S.draft.sex = b.dataset.sex; S.dirty = true; syncSex(); renderBody(); break;
     case 'body-save': saveStats(); toast('Stats saved'); break;
     case 'export': exportBackup(); break;
+    case 'bf-take': $('#in-bfcam').click(); break;
+    case 'bf-pick': $('#in-bfgal').click(); break;
+    case 'bf-clear': if (S.bf.photo) URL.revokeObjectURL(S.bf.photo.url); S.bf.photo = null; S.bf.probs = null; renderBodyPhoto(); break;
+    case 'bf-level': S.bf.level = Number(b.dataset.i); renderBodyPhoto(); break;
+    case 'bf-save': saveBodyFat(); break;
+    case 'banner': if (wrappedOn()) playWeek(lastWeekStart()); else { S.wk.start = lastWeekStart(); settings().seenWeek = S.wk.start; saveProfile(); setTab('week'); } break;
+    case 'wk-prev': S.wk.start = addDays(S.wk.start || weekStart(dayKey()), -7); S.wk.report = false; renderWeek(); break;
+    case 'wk-next': if (S.wk.start < weekStart(dayKey())) { S.wk.start = addDays(S.wk.start, 7); S.wk.report = false; renderWeek(); } break;
+    case 'wk-play': playWeek(S.wk.start); break;
+    case 'wk-report': S.wk.report = true; renderWeek(); break;
+    case 'wk-cover': S.wk.report = false; renderWeek(); break;
+    case 'pan-take': $('#in-pcam').click(); break;
+    case 'pan-pick': $('#in-pgal').click(); break;
+    case 'pan-add-detected': {
+      let n = 0; for (const d of S.pan.detect || []) { if (!S.pan.sel.has(d.name)) continue; const P = PANTRY.find(x => x[0] === d.name); if (P && addPantry(pantryFood(P[2], P[0], P[3]))) n++; }
+      S.pan.detect = null; S.pan.sel = new Set(); renderPantry(); toast(`Added ${n} item${n === 1 ? '' : 's'} to your pantry`); break; }
+    case 'pan-add': { const ok = addPantry(pantryFood(Number(b.dataset.ndb), b.dataset.name || null, b.dataset.role || null)); $('#pan-search').value = ''; $('#pan-results').innerHTML = ''; renderPantry(); toast(ok ? 'Added to your pantry' : 'Already in your pantry'); break; }
+    case 'pan-del': S.pantry = S.pantry.filter(x => x.key !== b.dataset.key); savePantry(); S.pan.ideas = null; S.pan.plan = null; renderPantry(); break;
+    case 'pan-clear': if (b.dataset.confirm) { S.pantry = []; savePantry(); S.pan.ideas = S.pan.plan = null; delete b.dataset.confirm; b.textContent = 'Clear all'; renderPantry(); } else { b.dataset.confirm = '1'; b.textContent = 'Tap again to clear'; setTimeout(() => { delete b.dataset.confirm; b.textContent = 'Clear all'; }, 4000); } break;
+    case 'pan-barcode': S.bcTarget = 'pantry'; S.mode = 'barcode'; setTab('scan'); bcMsg('Scanning for your pantry. The item goes to your pantry, not your log.'); break;
+    case 'pan-usebody': S.profile.planGoals = {}; saveProfile(); renderPantry(); toast(targets().set ? 'Using your Body targets' : 'Add your stats in Body for personal targets'); break;
+    case 'pan-meals': (S.profile.planOpts ||= {}).meals = Number(b.dataset.n); saveProfile(); renderPantry(); if (S.pan.ideas || S.pan.plan) makeIdeas(S.pan.mode); break;
+    case 'pan-opt': { const o = (S.profile.planOpts ||= {}); const k = b.dataset.opt; o[k] = !planOpts()[k]; saveProfile(); renderPantry(); if (S.pan.ideas || S.pan.plan) makeIdeas(S.pan.mode); break; }
+    case 'pan-ideas': makeIdeas('ideas'); break;
+    case 'pan-day': makeIdeas('day'); break;
+    case 'idea-log': { const idea = (S.pan.logList || [])[Number(b.dataset.idx)]; if (idea) logIdea(idea, b.dataset.slot || null); break; }
     case 'import': $('#in-backup').click(); break;
   }
 });
@@ -658,6 +991,8 @@ document.addEventListener('input', e => {
   } else if (t.id === 'plate-name') S.plateName = t.value;
   else if (t.id === 'search-in') { clearTimeout(searchT); searchT = setTimeout(runSearch, 140); }
   else if (t.closest('#view-body') && t.id && t.id.startsWith('b-')) { readForm(); S.dirty = true; renderBody(); }
+  else if (t.id === 'pan-search') { clearTimeout(searchT); searchT = setTimeout(runPanSearch, 140); }
+  else if (t.id && t.id.startsWith('g-')) { readGoals(); }
 });
 document.addEventListener('change', e => {
   const t = e.target;
@@ -671,11 +1006,17 @@ document.addEventListener('change', e => {
     const g = itemGrams(it); const n = usdaItem(f[0], g, null, null);
     Object.assign(it, {ndb:n.ndb, name:n.name, sub:n.sub, p:n.p, opts:n.opts, opt:n.opt, qty:n.qty, alts:null, label:null});
     renderPlate();
-  } else if (t.id === 'b-act' || t.id === 'b-goal') { readForm(); S.dirty = true; renderBody(); }
+  } else if (['b-act','b-goal','b-sport','b-days'].includes(t.id)) { readForm(); S.dirty = true; renderBody(); }
+  else if (t.id === 'set-wrapped') { settings().wrapped = t.checked; saveProfile(); renderToday(); toast(t.checked ? 'Weekly recap plays as Wrapped stories' : 'Weekly recap shows as a simple report'); }
+  else if (t.dataset.det) { const n = t.dataset.det; t.checked ? S.pan.sel.add(n) : S.pan.sel.delete(n); renderDetect(); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'bc-code') { e.preventDefault(); lookupBarcode(e.target.value); } });
 $('#in-cam').addEventListener('change', e => { setPhoto(e.target.files[0]); e.target.value = ''; });
 $('#in-gal').addEventListener('change', e => { setPhoto(e.target.files[0]); e.target.value = ''; });
+$('#in-bfcam').addEventListener('change', e => { setBodyPhoto(e.target.files[0]); e.target.value = ''; });
+$('#in-bfgal').addEventListener('change', e => { setBodyPhoto(e.target.files[0]); e.target.value = ''; });
+$('#in-pcam').addEventListener('change', e => { scanPantry(e.target.files[0]); e.target.value = ''; });
+$('#in-pgal').addEventListener('change', e => { scanPantry(e.target.files[0]); e.target.value = ''; });
 $('#in-backup').addEventListener('change', e => { if (e.target.files[0]) importBackup(e.target.files[0]); e.target.value = ''; });
 document.addEventListener('visibilitychange', () => { if (document.hidden) bcStop(); else if (S.tab === 'today') renderToday(); });
 
@@ -694,8 +1035,10 @@ async function boot(){
   DB = db; INDEX = buildIndex(db); BYID = new Map(db.foods.map(f => [f[0], f]));
   fillBodyForm();
   const h = (location.hash || '').slice(1);
-  setTab(['scan','body'].includes(h) ? h : 'today');
+  $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+  fillBodyForm();
+  setTab(['scan','body','week','pantry'].includes(h) ? h : 'today');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Macro Lens couldn’t load its food data. Reload the page.</p>'; });
-window.__ml = {S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan};
+window.__ml = {S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};

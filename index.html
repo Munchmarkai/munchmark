@@ -25,6 +25,7 @@
 
   <!-- TODAY -->
   <section class="view" id="view-today" aria-label="Daily log">
+    <div id="wrap-banner"></div>
     <div class="daynav">
       <button type="button" class="iconbtn" data-action="day-prev" aria-label="Previous day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
       <div class="daynav-label"><b id="day-title">Today</b><span id="day-sub"></span></div>
@@ -143,6 +144,80 @@
     </div>
   </section>
 
+  <!-- WEEK -->
+  <section class="view" id="view-week" aria-label="Weekly recap" hidden>
+    <div class="daynav">
+      <button type="button" class="iconbtn" data-action="wk-prev" aria-label="Previous week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+      <div class="daynav-label"><b id="wk-title">This week</b><span id="wk-sub"></span></div>
+      <button type="button" class="iconbtn" id="wk-next" data-action="wk-next" aria-label="Next week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+    </div>
+    <div id="wk-body" class="view"></div>
+  </section>
+
+  <!-- PANTRY -->
+  <section class="view" id="view-pantry" aria-label="Pantry and meal ideas" hidden>
+    <div class="sec">
+      <div class="sec-head"><h2 class="h">Scan your groceries</h2><span class="sub" id="pan-count"></span></div>
+      <div class="frame" id="pframe">
+        <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+        <img id="pframe-img" alt="Your groceries" hidden>
+        <div class="scanline"></div>
+        <div class="frame-empty" id="pframe-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 11.1a1.5 1.5 0 0 1-1.5 1.4H7.7a1.5 1.5 0 0 1-1.5-1.4z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          <span>Photograph an open cabinet, the fridge or groceries spread on the counter.<br>Labels facing the camera work best.</span>
+        </div>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn primary" data-action="pan-take">Take photo</button>
+        <button type="button" class="btn ghost" data-action="pan-pick">From gallery</button>
+      </div>
+      <input type="file" id="in-pcam" accept="image/*" capture="environment" class="vh" tabindex="-1">
+      <input type="file" id="in-pgal" accept="image/*" class="vh" tabindex="-1">
+      <div id="pan-status"></div>
+      <div id="pan-detect"></div>
+    </div>
+    <div class="sec">
+      <div class="field">
+        <label for="pan-search">Add foods by name</label>
+        <div class="fix-row"><input type="text" id="pan-search" autocomplete="off" placeholder="chicken, rice, eggs…"><button type="button" class="btn ghost" data-action="pan-barcode">Barcode</button></div>
+        <ul class="results" id="pan-results"></ul>
+      </div>
+    </div>
+    <div class="sec" id="pan-list-sec">
+      <div class="sec-head"><h2 class="h">Your pantry</h2><button type="button" class="linkbtn" data-action="pan-clear" id="pan-clear">Clear all</button></div>
+      <div id="pan-list"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-head"><h2 class="h">Your goals</h2><button type="button" class="linkbtn" data-action="pan-usebody">Use my Body targets</button></div>
+      <div class="goalgrid">
+        <div class="field"><label for="g-kcal">Calories</label><input type="number" id="g-kcal" inputmode="numeric"></div>
+        <div class="field"><label for="g-p">Protein g</label><input type="number" id="g-p" inputmode="numeric"></div>
+        <div class="field"><label for="g-c">Carbs g</label><input type="number" id="g-c" inputmode="numeric"></div>
+        <div class="field"><label for="g-f">Fat g</label><input type="number" id="g-f" inputmode="numeric"></div>
+      </div>
+      <p class="fine">Daily totals. Meal ideas split them across your meals.</p>
+      <div class="field">
+        <span class="lbl" id="meals-lbl">Meals a day</span>
+        <div class="seg" role="group" aria-labelledby="meals-lbl">
+          <button type="button" data-action="pan-meals" data-n="2">2</button>
+          <button type="button" data-action="pan-meals" data-n="3">3</button>
+          <button type="button" data-action="pan-meals" data-n="4">4</button>
+        </div>
+      </div>
+      <div class="chips">
+        <button type="button" class="chip" data-action="pan-opt" data-opt="snack">+ Daily snack</button>
+        <button type="button" class="chip" data-action="pan-opt" data-opt="lowSodium">Keep sodium low</button>
+        <button type="button" class="chip" data-action="pan-opt" data-opt="highFiber">Favor fiber</button>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn primary" data-action="pan-ideas">Meal ideas</button>
+        <button type="button" class="btn ghost" data-action="pan-day">Plan my day</button>
+      </div>
+      <p class="err" id="pan-msg" hidden></p>
+    </div>
+    <div id="pan-out" class="view"></div>
+  </section>
+
   <!-- BODY -->
   <section class="view" id="view-body" aria-label="Body stats" hidden>
     <div class="sec">
@@ -181,6 +256,11 @@
           <option value="gain">Gain slowly (lean bulk)</option>
         </select>
       </div>
+      <div class="grid2">
+        <div class="field"><label for="b-sport">Sport</label><select id="b-sport"></select></div>
+        <div class="field"><label for="b-days">Training days a week</label>
+          <select id="b-days"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option></select></div>
+      </div>
       <details class="alln" open>
         <summary>Tape measurements &amp; custom goal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></summary>
         <div class="pad">
@@ -196,9 +276,33 @@
       <button type="button" class="btn primary" id="b-save" data-action="body-save">Save stats</button>
     </div>
     <div id="body-stats" class="view"></div>
+    <div class="sec">
+      <h2 class="h">Body fat photo check</h2>
+      <div class="frame tall" id="bfframe">
+        <span class="corner c1"></span><span class="corner c2"></span><span class="corner c3"></span><span class="corner c4"></span>
+        <img id="bfframe-img" alt="Your body photo" hidden>
+        <div class="scanline"></div>
+        <div class="frame-empty" id="bfframe-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M8 21v-6l-2-1 1.5-5.5h9L18 14l-2 1v6"/></svg>
+          <span>Front-facing, good light, torso visible.<br>The photo stays on your phone and is never saved.</span>
+        </div>
+        <button type="button" class="xbtn" id="bf-clear" data-action="bf-clear" aria-label="Remove photo" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="row2">
+        <button type="button" class="btn ghost" data-action="bf-take">Take photo</button>
+        <button type="button" class="btn ghost" data-action="bf-pick">From gallery</button>
+      </div>
+      <input type="file" id="in-bfcam" accept="image/*" capture="user" class="vh" tabindex="-1">
+      <input type="file" id="in-bfgal" accept="image/*" class="vh" tabindex="-1">
+      <div id="bf-out" class="view"></div>
+    </div>
     <div class="sec" id="hist-sec" hidden>
       <h2 class="h">Check-ins</h2>
       <div class="tblwrap"><table class="hist tnum" id="hist"></table></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Settings</h2>
+      <label class="switch" for="set-wrapped"><span><b>Wrapped-style weekly recap</b><small>Your week as full-screen stories. Off shows the same recap as a simple report.</small></span><input type="checkbox" id="set-wrapped" role="switch"></label>
     </div>
     <div class="sec">
       <h2 class="h">Backup &amp; about</h2>
@@ -217,7 +321,9 @@
 <nav class="tabs" aria-label="Sections">
   <div class="tabs-in">
     <button type="button" class="tab" data-action="tab" data-tab="today" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/><path d="M8.5 12.5h7M8.5 9h4M8.5 16h5.5"/></svg>Today</button>
+    <button type="button" class="tab" data-action="tab" data-tab="week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>Week</button>
     <button type="button" class="tab-scan" data-action="tab" data-tab="scan" aria-label="Add food"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3.2"/></svg></button>
+    <button type="button" class="tab" data-action="tab" data-tab="pantry"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 11.1a1.5 1.5 0 0 1-1.5 1.4H7.7a1.5 1.5 0 0 1-1.5-1.4z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>Pantry</button>
     <button type="button" class="tab" data-action="tab" data-tab="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M8 21v-6l-2-1 1.5-5.5h9L18 14l-2 1v6"/></svg>Body</button>
   </div>
 </nav>

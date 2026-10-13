@@ -6,7 +6,9 @@ A free calorie and nutrition tracker that runs entirely on your phone. No accoun
 - **Barcode:** scan packaged food for nutrition from Open Food Facts.
 - **Type:** write meals like `2 eggs, 2 slices toast, 1 tbsp butter` or search 8,400 USDA foods.
 - Tracks calories, protein, carbs, fat, fiber, sugar, saturated fat, cholesterol, sodium, potassium, calcium, iron, magnesium, zinc and vitamins A, C, D, B12 and folate.
-- Body stats: BMI, daily calorie and macro targets (Mifflin-St Jeor), and body fat from the U.S. Navy tape formula.
+- Pantry: snap your cabinet, fridge or groceries (or add by name/barcode) and get meal ideas or a full-day plan sized to your calorie and macro goals.
+- Weekly recap: each day, averages, top foods and sport-aware tips, as Wrapped-style stories or a plain report (switch in Settings).
+- Body stats: BMI, daily calorie and macro targets (Mifflin-St Jeor), and body fat blended from a photo check, the U.S. Navy tape formula and BMI.
 - Your log is stored only on your device. Use Export backup in the Body tab to keep a copy.
 
 ## Install on Android
