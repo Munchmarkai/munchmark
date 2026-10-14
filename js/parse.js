@@ -6,7 +6,7 @@ const NUMWORDS = {a:1, an:1, one:1, two:2, three:3, four:4, five:5, six:6, seven
 const FRACS = {'½':0.5, '¼':0.25, '¾':0.75, '⅓':1/3, '⅔':2/3, '⅛':0.125};
 // unit -> grams, or 'serving' words matched against USDA household measures
 const MASS = {g:1, gram:1, grams:1, gr:1, kg:1000, oz:28.35, ounce:28.35, ounces:28.35, lb:453.6, lbs:453.6, pound:453.6, pounds:453.6, ml:1, l:1000, 'fl oz':29.6, floz:29.6};
-const MEASURE = ['cup','cups','tbsp','tablespoon','tablespoons','tsp','teaspoon','teaspoons','slice','slices','piece','pieces','scoop','scoops','bar','bars','can','cans','bottle','bottles','glass','glasses','bowl','bowls','plate','plates','serving','servings','handful','handfuls','patty','patties','link','links','strip','strips','wedge','wedges','stick','sticks','pat','order','orders','large','medium','small','each','whole','container','package','packet','sandwich','item'];
+const MEASURE = ['clove','cloves','stalk','stalks','ear','ears','cup','cups','tbsp','tablespoon','tablespoons','tsp','teaspoon','teaspoons','slice','slices','piece','pieces','scoop','scoops','bar','bars','can','cans','bottle','bottles','glass','glasses','bowl','bowls','plate','plates','serving','servings','handful','handfuls','patty','patties','link','links','strip','strips','wedge','wedges','stick','sticks','pat','order','orders','large','medium','small','each','whole','container','package','packet','sandwich','item'];
 const SINGULAR = w => w.replace(/(es|s)$/, '').replace(/ie$/, 'y');
 const VOLUME_ML = {cup:240, tbsp:15, tablespoon:15, tsp:5, teaspoon:5, glass:240, can:355, bottle:500};
 
@@ -72,7 +72,12 @@ function gramsFromMeasure(f, unit){
   return null;
 }
 
-export function parseSegment(seg, index, foodsById){
+// Recipes list raw or dry amounts ("1 lb ground beef", "2 cups rice"), so swap the cooked defaults.
+// ratio: how much a cooked portion weighs raw (meat shrinks, grains absorb water)
+const RAW = {'white rice': [20044, 0.33], 'rice': [20044, 0.33], 'brown rice': [20036, 0.33], 'pasta': [20120, 0.4], 'oatmeal': [8120, 0.35], 'quinoa': [20035, 0.35],
+  'ground beef': [23572, 1.33], 'grilled chicken breast': [5062, 1.33], 'chicken breast': [5062, 1.33], 'chicken with rice': null, 'steak': [23584, 1.3], 'salmon': [15236, 1.25],
+  'baked potato': [11352, 1], 'sweet potato': [11507, 1], 'broccoli': [11090, 1], 'green beans': [11052, 1], 'pork chop': [10024, 1.3], 'turkey': [5305, 1.33]};
+export function parseSegment(seg, index, foodsById, opts = {}){
   let [qty, rest] = parseQty(seg);
   rest = rest.trim().replace(/^of\s+/i, '');
   let unit = null, grams = null;
@@ -105,6 +110,19 @@ export function parseSegment(seg, index, foodsById){
     items = [{ndb: hit[0], g: dg}];
     foodName = hit[1]; portionText = hit[n-3] || '100 g';
   }
+  let rawRatio = 1;
+  if (opts.raw && !/\b(cooked|canned|leftover|prepared|grilled|baked|roasted|fried)\b/i.test(seg) && unit !== 'can') {
+    const r = label && RAW[label[0]];
+    if (r && foodsById.get(r[0])) {
+      const f = foodsById.get(r[0]), n = f.length;
+      if (!unit && qty != null) { const per = items.reduce((a, i) => a + i.g, 0) / (leadingCount(portionText) || 1); rawRatio = r[1]; items = [{ndb: r[0], g: per * r[1]}]; portionText = `1 ${String(portionText).replace(/^\d+(\.\d+)?\s*/, '')}`; }
+      else { items = [{ndb: r[0], g: f[n-4] || 100}]; portionText = f[n-3] || '100 g'; }
+      foodName = f[1];
+    } else if (!label && / cooked/i.test(foodName)) {
+      const alt = [...search(index, name + ' raw', 4), ...search(index, name + ' dry', 4)].find(h => /\b(raw|dry|uncooked)\b/i.test(h[1]) && h[1].split(',')[0] === foodName.split(',')[0]);
+      if (alt) { const n = alt.length; items = [{ndb: alt[0], g: alt[n-4] || 100}]; foodName = alt[1]; portionText = alt[n-3] || '100 g'; }
+    }
+  }
   const baseTotal = items.reduce((a, i) => a + i.g, 0);
   let factor = 1;
   if (unit && MASS[unit] !== undefined) {
@@ -117,7 +135,10 @@ export function parseSegment(seg, index, foodsById){
     const u = SINGULAR(unit);
     if (per == null && /^(large|medium|small|each|whole|item|serving|order|plate|bowl|sandwich|package|container)$/.test(u)) per = baseTotal / (leadingCount(portionText) || 1);
     const grp = main ? main[2] : 0;
-    if (per == null && u === 'can') per = grp === 14 ? 355 : grp === 15 ? 113 : null;
+    if (per == null && u === 'stalk') per = 40;
+    if (per == null && u === 'ear') per = 90;
+    if (per == null && u === 'can' && /\bcans?\b/i.test(String(portionText))) per = baseTotal / (leadingCount(portionText) || 1);
+    if (per == null && u === 'can') per = grp === 14 ? 355 : grp === 15 ? 113 : grp === 16 || grp === 11 ? 250 : grp === 6 ? 305 : null;
     if (per == null && VOLUME_ML[u] && u !== 'can' && (grp === 14 || grp === 6 || u !== 'bottle')) per = VOLUME_ML[u];
     if (per == null) per = baseTotal / (leadingCount(portionText) || 1);
     factor = ((qty ?? 1) * per) / baseTotal;
@@ -126,12 +147,14 @@ export function parseSegment(seg, index, foodsById){
     const count = leadingCount(portionText);
     factor = count ? qty / count : qty;
   }
-  return {text:seg, label: label ? label[0] : null, name: foodName, items: items.map(i => ({ndb:i.ndb, g: round1(i.g * factor)})), portion: describe(qty, unit, portionText, factor)};
+  return {text:seg, label: label && rawRatio === 1 && !(opts.raw && RAW[label[0]] && items[0].ndb === RAW[label[0]][0]) ? label[0] : null, name: foodName, items: items.map(i => ({ndb:i.ndb, g: round1(i.g * factor)})), portion: describe(qty, unit, portionText, factor)};
 }
 
 function leadingCount(t){
   const m = String(t).match(/^(\d+(?:\.\d+)?|[½¼¾⅛])/);
   if (!m) return null;
+  // "5 oz cooked" or "1 cup" is an amount, not a count of pieces
+  if (/^(\d+(?:\.\d+)?|[½¼¾⅛])\s*(oz|ounces?|g|grams?|cups?|tbsp|tsp|tablespoons?|teaspoons?|lbs?|ml|fl|kg)\b/i.test(String(t))) return null;
   return FRACS[m[1]] ?? Number(m[1]);
 }
 function describe(qty, unit, portionText, factor){
@@ -148,4 +171,40 @@ const round1 = n => Math.round(n * 10) / 10;
 
 export function parseMeal(text, index, foodsById){
   return splitMeal(text).map(s => parseSegment(s, index, foodsById)).filter(Boolean);
+}
+
+// An ingredient list: one ingredient per line (from a photo or typed). Water counts toward weight, not calories.
+const SKIP_LINE = /^(ingredients?|directions?|instructions?|method|steps?|notes?|serves|servings?|yield|prep|cook|total|equipment|for the)\b|^\W*$/i;
+const HEAD_START = /^\W*ingredients?\b/i, HEAD_END = /^\W*(directions?|instructions?|method|steps?|preparation|how to make( it)?|to make)\b/i;
+export function parseIngredients(text, index, foodsById){
+  const out = [];
+  let lines = String(text).split(/\n|;|•|·/);
+  // a recipe card or page: keep only what sits between "Ingredients" and "Directions"
+  const hs = lines.findIndex(l => HEAD_START.test(l));
+  if (hs >= 0) lines = lines.slice(hs + 1);
+  const he = lines.findIndex(l => HEAD_END.test(l));
+  if (he >= 0) lines = lines.slice(0, he);
+  for (let line of lines){
+    line = line
+      .replace(/^[^A-Za-z0-9½¼¾⅓⅔⅛]+/, '')                          // bullets and OCR junk before the text
+      .replace(/^(?:[A-Za-z]{1,2}|\d+[.)])\s+(?=[\d½¼¾⅓⅔⅛])/, '')    // a bullet read as a letter ("e 2 cups") or a step number ("1. 2 lb")
+      .replace(/\(.*?\)/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!line || line.length < 3 || SKIP_LINE.test(line)) continue;
+    line = line.replace(/,\s*(chopped|diced|minced|sliced|shredded|grated|divided|to taste|optional|rinsed|drained|peeled|cubed|softened|melted|beaten|halved|trimmed|crushed).*$/i, '').replace(/\b(to taste|as needed|optional)\b/gi, '').trim();
+    line = line.replace(/\b(frozen|sweet|canned|whole kernel)\s+corn\b/i, 'corn kernels').replace(/\b(fresh|frozen|boneless|skinless|extra[- ]virgin|lean)\s+/gi, '').replace(/\s+/g, ' ');
+    // amounts are read as raw/dry already, so these words only get in the way of matching
+    line = line.replace(/\b(dry|dried|uncooked|raw)\s+(?=(white |brown |jasmine |basmati |long[- ]grain )?(rice|pasta|spaghetti|penne|macaroni|noodles|oats|quinoa|lentils|beans))/i, '').trim();
+    if (/^(salt|pepper|salt and pepper|salt & pepper|black pepper|kosher salt|sea salt|seasoning|spices?|cooking spray|ice)$/i.test(line.replace(/^[\d\s\/.½¼¾]+(tsp|teaspoons?|tbsp|tablespoons?|pinch|dash|pinches)?\.?\s*(of\s+)?/i, ''))) { out.push({text: line, skip: 'seasoning'}); continue; }
+    const wm = line.match(/^([\d\s\/.½¼¾]+)?\s*(cups?|c|ml|l|liters?|oz|fl oz|quarts?|qt)?\s*(of\s+)?(cold |warm |hot |boiling )?water\b/i);
+    if (wm) {
+      const [q] = (wm[1] || '1').trim().split(/\s+/).map(x => x.includes('/') ? x.split('/').reduce((a, b) => a / b) : ({'½': 0.5, '¼': 0.25, '¾': 0.75}[x] ?? Number(x)));
+      const u = (wm[2] || 'cup').toLowerCase();
+      const ml = (q || 1) * (/^c(up)?s?$/.test(u) ? 240 : /^(ml)$/.test(u) ? 1 : /^(l|liters?)$/.test(u) ? 1000 : /oz/.test(u) ? 29.6 : /qu?a?r?t/.test(u) ? 946 : 240);
+      out.push({text: line, water: Math.round(ml)});
+      continue;
+    }
+    const r = parseSegment(line, index, foodsById, {raw: true});
+    if (r) out.push(r);
+  }
+  return out;
 }

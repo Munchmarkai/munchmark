@@ -48,9 +48,11 @@ function slides(s){
   out.push({theme:'rose', html:`${rings('d4')}
     <p class="wr-eyebrow wr-in">Your macros, daily average</p>
     <ul class="wr-macros wr-in">
-      ${[['Protein', a[1], T.protein_g], ['Carbs', a[2], T.carbs_g], ['Fat', a[3], T.fat_g]].map(([l, v, t]) => `<li><span>${l}</span><b data-count="${Math.round(v)}">${int(v)}</b><em>g · ${pct(v, t)}% of goal</em><i><u style="width:${Math.min(100, pct(v, t))}%"></u></i></li>`).join('')}
+      ${[['Protein', a[1], T.protein_g], ['Carbs', a[2], T.carbs_g], ['Fat', a[3], T.fat_g]].map(([l, v, t]) => {
+        const inRange = l === 'Protein' && v >= (T.protein_lo ?? t * 0.9) && v <= (T.protein_hi ?? t * 1.1);
+        return `<li><span>${l}</span><b data-count="${Math.round(v)}">${int(v)}</b><em>g · ${inRange ? 'in your range' : pct(v, t) + '% of goal'}</em><i><u style="width:${Math.min(100, pct(v, t))}%"></u></i></li>`; }).join('')}
     </ul>
-    <p class="wr-sub wr-in">Protein goal hit on <b>${s.proteinDays} of 7</b> days</p>`});
+    <p class="wr-sub wr-in">Protein in range on <b>${s.proteinDays} of 7</b> days</p>`});
   if (s.topFoods.length) out.push({theme:'plum', html:`${rings('d5')}
     <p class="wr-eyebrow wr-in">Your top foods</p>
     <ol class="wr-top wr-in">${s.topFoods.map((f, i) => `<li><b>${i + 1}</b><span>${esc(f.name)}</span><em>×${f.count}</em></li>`).join('')}</ol>`});
@@ -61,6 +63,15 @@ function slides(s){
       const r = dv ? v / dv : 0; let tag = '';
       if (bad === 'low' && dv) tag = r < 0.7 ? 'low' : 'good'; if (bad === 'high') tag = r > 1 ? 'high' : 'good';
       return `<li><span>${l}</span><b>${int(v)}<small>${u}</small></b>${tag ? `<em class="${tag}">${tag === 'good' ? 'on track' : tag}</em>` : '<em>a day</em>'}</li>`; }).join('')}</ul>`});
+  const x = s.extra || {};
+  if (x.waterDays) out.push({theme:'blue', html:`${rings('d2')}
+    <p class="wr-eyebrow wr-in">You drank</p>
+    <p class="wr-big wr-in" data-count="${Math.round(x.waterAvg)}">${int(x.waterAvg)}<small> oz</small></p>
+    <p class="wr-sub wr-in">of water a day on ${x.waterDays} logged day${x.waterDays === 1 ? '' : 's'}${x.waterGoal ? `, ${x.waterAvg >= x.waterGoal * 0.95 ? 'right at' : int(x.waterGoal - x.waterAvg) + ' oz under'} your ${int(x.waterGoal)} oz goal` : ''}</p>`});
+  if (x.feel != null) out.push({theme:'rose', html:`${rings('d5')}
+    <p class="wr-eyebrow wr-in">How you felt</p>
+    <p class="wr-big wr-in">${x.feel.toFixed(1)}<small> / 10</small></p>
+    <p class="wr-sub wr-in">average feel score from ${x.checkins} check-in${x.checkins === 1 ? '' : 's'}${x.sweat != null ? ` · ${x.sweat.toFixed(1)} lb sweat per practice` : ''}. Pin a week you love in Sports → Compare.</p>`});
   out.push({theme:'amber', html:`${rings('d7')}
     <p class="wr-eyebrow wr-in">Longest logging streak</p>
     <p class="wr-big wr-in">${s.streak}<small> day${s.streak === 1 ? '' : 's'}</small></p>

@@ -171,6 +171,17 @@ export const LABELS = [
   ['egg', [[1123, 50]], '1 large', false],
   ['chicken breast', [[5064, 140]], '5 oz cooked', false],
   ['rice', [[20045, 158]], '1 cup cooked', false],
+  ['salsa', [[6164, 36]], '2 tbsp', false],
+  ['onion', [[11282, 110]], '1 medium', false],
+  ['garlic', [[11215, 3]], '1 clove', false],
+  ['bell pepper', [[11821, 119]], '1 medium', false],
+  ['flour', [[20081, 125]], '1 cup', false],
+  ['sugar', [[19335, 200]], '1 cup', false],
+  ['diced tomatoes', [[11531, 411]], '1 can (14.5 oz)', false],
+  ['canned tomatoes', [[11531, 411]], '1 can (14.5 oz)', false],
+  ['crushed tomatoes', [[11693, 794]], '1 can (28 oz)', false],
+  ['tomato paste', [[11546, 16]], '1 tbsp', false],
+  ['corn kernels', [[11178, 136]], '1 cup', false],
 ];
 
 // Extra words people type that mean the same label.

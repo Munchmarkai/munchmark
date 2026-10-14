@@ -109,7 +109,7 @@ export function offP100(n){
   const sodium = g('sodium_100g') != null ? g('sodium_100g') * 1000 : (g('salt_100g') != null ? g('salt_100g') * 400 : null);
   return [kcal, g('proteins_100g'), g('carbohydrates_100g'), g('fat_100g'), g('fiber_100g'), g('sugars_100g'), g('saturated-fat_100g'),
     x('cholesterol_100g', 1000), sodium, x('potassium_100g', 1000), x('calcium_100g', 1000), x('iron_100g', 1000), x('magnesium_100g', 1000), x('zinc_100g', 1000),
-    x('vitamin-a_100g', 1e6), x('vitamin-c_100g', 1000), x('vitamin-d_100g', 1e6), x('vitamin-b12_100g', 1e6), x('vitamin-b9_100g', 1e6) ?? x('folates_100g', 1e6)];
+    x('vitamin-a_100g', 1e6), x('vitamin-c_100g', 1000), x('vitamin-d_100g', 1e6), x('vitamin-b12_100g', 1e6), x('vitamin-b9_100g', 1e6) ?? x('folates_100g', 1e6), g('water_100g')];
 }
 export const displayName = p => {
   const b = String(p.brands || '').split(',')[0].trim(), name = String(p.name || '').trim();

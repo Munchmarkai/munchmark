@@ -1,6 +1,6 @@
 // Weekly recap: per-day totals, averages, highlights and sport-aware suggestions. Pure, no DOM.
 // Nutrient arrays follow the app's KEYS order.
-const KEYS = ['calories','protein_g','carbs_g','fat_g','fiber_g','sugar_g','sat_fat_g','cholesterol_mg','sodium_mg','potassium_mg','calcium_mg','iron_mg','magnesium_mg','zinc_mg','vitamin_a_mcg','vitamin_c_mg','vitamin_d_mcg','vitamin_b12_mcg','folate_mcg'];
+const KEYS = ['calories','protein_g','carbs_g','fat_g','fiber_g','sugar_g','sat_fat_g','cholesterol_mg','sodium_mg','potassium_mg','calcium_mg','iron_mg','magnesium_mg','zinc_mg','vitamin_a_mcg','vitamin_c_mg','vitamin_d_mcg','vitamin_b12_mcg','folate_mcg','water_g'];
 const num = v => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0; };
 
 export const SPORTS = {
@@ -52,7 +52,9 @@ export function summarize(days, start, target, body = {}){
   const near = (v, goal, tol) => goal > 0 && Math.abs(v - goal) / goal <= tol;
   for (const d of list){
     d.hitKcal = d.logged && near(d.t[0], target.calories, 0.1);
-    d.hitProtein = d.logged && d.t[1] >= target.protein_g * 0.9;
+    const plo = target.protein_lo ?? target.protein_g * 0.9, phi = target.protein_hi ?? target.protein_g * 1.1;
+    d.hitProtein = d.logged && d.t[1] >= plo && d.t[1] <= phi;
+    d.overProtein = d.logged && d.t[1] > phi;
     d.score = d.logged ? [0, 1, 2, 3].reduce((a, k) => a + Math.abs(d.t[k] - [target.calories, target.protein_g, target.carbs_g, target.fat_g][k]) / Math.max(1, [target.calories, target.protein_g, target.carbs_g, target.fat_g][k]) * [3, 2, 1, 1][k], 0) : Infinity;
   }
   const bestDay = logged.length ? logged.reduce((a, b) => b.score < a.score ? b : a) : null;
@@ -94,16 +96,15 @@ function suggest(s, body){
   else if (a[0] > T.calories * 1.12) push(3, 'Over your calorie goal', `You averaged ${r0(a[0])} calories, about ${r0(a[0] - T.calories)} over your goal. Your biggest calorie foods were ${s.topFoods.slice().sort((x, y) => y.kcal - x.kcal).slice(0, 2).map(f => f.name).join(' and ')}; a smaller portion of those is the easiest fix.`);
   else push(6, 'Calories on point', `You averaged ${r0(a[0])} calories, right around your ${r0(T.calories)} goal.`, 'good');
 
-  // protein, by sport range when weight is known
-  if (kg) {
-    const gkg = a[1] / kg, [lo, hi] = R.p;
-    if (gkg < lo * 0.95) push(2, 'More protein', `Protein averaged ${r0(a[1])} g (${gkg.toFixed(1)} g per kg).${sport.kind !== 'none' ? ` For ${sport.label.toLowerCase()}, aim for ${lo}–${hi} g per kg, about ${r0(lo * kg)}–${r0(hi * kg)} g a day.` : ` Aim for at least ${r0(T.protein_g)} g.`} Easy adds: a cup of Greek yogurt (about 20 g), 4 oz chicken (about 35 g) or 3 eggs (about 19 g).`);
-    else if (s.proteinDays >= 5) push(5, 'Protein streak', `You hit your protein goal on ${s.proteinDays} of 7 days. That's what builds and keeps muscle.`, 'good');
-    if (R.c) {
-      const ckg = a[2] / kg, [clo, chi] = R.c;
-      if (ckg < clo * 0.9) push(2, 'Fuel your training', `Carbs averaged ${ckg.toFixed(1)} g per kg. ${sport.label} usually runs best on ${clo}–${chi} g per kg on training days (about ${r0(clo * kg)} g). Add rice, oats, potatoes, fruit or pasta around workouts.`);
-    }
-  } else if (a[1] < T.protein_g * 0.9) push(2, 'More protein', `Protein averaged ${r0(a[1])} g against a ${r0(T.protein_g)} g goal. Add a protein food to each meal.`);
+  // protein: 1 g per pound of body weight, 10% either way is on target
+  const plo = T.protein_lo ?? T.protein_g * 0.9, phi = T.protein_hi ?? T.protein_g * 1.1;
+  if (a[1] < plo) push(2, 'More protein', `Protein averaged ${r0(a[1])} g a day; your range is ${r0(plo)}–${r0(phi)} g (1 g per pound of body weight, give or take 10%). Easy adds: a cup of Greek yogurt (about 20 g), 4 oz chicken (about 35 g) or 3 eggs (about 19 g).`);
+  else if (a[1] > phi) push(4, 'Protein above your range', `Protein averaged ${r0(a[1])} g, above your ${r0(plo)}–${r0(phi)} g range. Fine now and then; on most days, trading some of it for carbs leaves more energy for ${sport.kind !== 'none' ? 'training' : 'the day'}.`);
+  else if (s.proteinDays >= 5) push(5, 'Protein on target', `Protein landed in your ${r0(plo)}–${r0(phi)} g range on ${s.proteinDays} of 7 days. That's what builds and keeps muscle.`, 'good');
+  if (kg && R.c) {
+    const ckg = a[2] / kg, [clo, chi] = R.c;
+    if (ckg < clo * 0.9) push(2, 'Fuel your training', `Carbs averaged ${ckg.toFixed(1)} g per kg. ${sport.label} usually runs best on ${clo}–${chi} g per kg on training days (about ${r0(clo * kg)} g). Add rice, oats, potatoes, fruit or pasta around workouts.`);
+  }
 
   if (a[4] < 20) push(4, 'More fiber', `Fiber averaged ${a[4].toFixed(0)} g a day; the daily value is 28 g. Beans, berries, oats, whole-wheat bread and vegetables add it fast.`);
   if (a[8] > 2300) push(3, 'Watch the sodium', `Sodium averaged ${r0(a[8])} mg, over the 2,300 mg limit. Top sources this week: ${s.topSodium.map(f => f.name).join(', ')}.${sport.kind !== 'none' ? ' Heavy sweaters lose sodium, but this is still high for most days.' : ''}`);

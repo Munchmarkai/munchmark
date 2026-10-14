@@ -383,3 +383,126 @@ export async function scan(blob, ctx = {}){
 
 export async function fetchDetails(code){ return getProduct(code); }
 export function preloadOCR(){ ocr().then(releaseSoon).catch(() => {}); }
+
+/* ---------- reading a kitchen-scale display ---------- */
+// Seven-segment LCD digits need their own model (tessdata_ssd, Apache-2.0); printed digits use the normal one.
+let ssdP = null;
+function ssd(){
+  if (!ssdP) {
+    ssdP = (async () => {
+      const T = (await import('../vendor/tesseract/tesseract.esm.min.js')).default;
+      const w = await T.createWorker('ssd_int', 1, {workerPath: VENDOR + '/worker.min.js', corePath: VENDOR, langPath: VENDOR});
+      await w.setParameters({tessedit_pageseg_mode: '11', tessedit_char_whitelist: '0123456789.', user_defined_dpi: '300'});
+      return w;
+    })();
+    ssdP.catch(() => { ssdP = null; });
+  }
+  return ssdP;
+}
+function numbersFrom(data){
+  const words = [];
+  for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []) for (const w of l.words || []){
+    const t = String(w.text || '').replace(/[oO]/g, '0').replace(/[,]/g, '.').replace(/[^0-9.]/g, '');
+    if (!t || !/\d/.test(t)) continue;
+    words.push({t, conf: w.confidence, ...w.bbox, h: w.bbox.y1 - w.bbox.y0});
+  }
+  // join digit groups that sit side by side on the same line (LCD digits are often read one by one)
+  // left to right, so a group only ever grows rightward
+  words.sort((a, b) => a.x0 - b.x0);
+  const out = [];
+  for (const w of words){
+    const prev = out.find(o => Math.abs((o.y0 + o.y1) / 2 - (w.y0 + w.y1) / 2) < o.h * 0.4 && w.x0 - o.x1 < o.h * 0.7 && w.x0 - o.x1 > -o.h * 0.2 && Math.abs(o.h - w.h) < o.h * 0.35);
+    if (prev) { prev.t += w.t; prev.x1 = w.x1; prev.conf = Math.min(prev.conf, w.conf); }
+    else out.push({...w});
+  }
+  return out.map(w => ({...w, v: parseFloat(w.t)})).filter(w => Number.isFinite(w.v) && w.v > 0 && w.v < 20000 && (w.t.match(/\./g) || []).length <= 1);
+}
+function inverted(cv){
+  const out = document.createElement('canvas'); out.width = cv.width; out.height = cv.height;
+  const g = out.getContext('2d'); g.drawImage(cv, 0, 0);
+  const id = g.getImageData(0, 0, out.width, out.height), d = id.data;
+  for (let i = 0; i < d.length; i += 4){ d[i] = 255 - d[i]; d[i+1] = 255 - d[i+1]; d[i+2] = 255 - d[i+2]; }
+  g.putImageData(id, 0, 0);
+  return out;
+}
+// region (optional): {cx, cy} in 0..1, where the person tapped the display; reading is limited to a box around it
+export async function readScale(blob, onStep = () => {}, region = null){
+  const full = await bitmap(blob);
+  let src = full;
+  if (region) {
+    const W = full.width, H = full.height, w = W * 0.7, h = Math.min(H * 0.34, w * 0.5);
+    const x = Math.max(0, Math.min(W - w, region.cx * W - w / 2)), y = Math.max(0, Math.min(H - h, region.cy * H - h / 2));
+    src = document.createElement('canvas'); src.width = Math.round(w); src.height = Math.round(h);
+    src.getContext('2d').drawImage(full, x, y, w, h, 0, 0, src.width, src.height);
+  }
+  const sizes = region ? [700, 1100] : [900, 1500];
+  const cands = [];
+  let unit = null;
+  const tall = () => cands.some(c => c.src === 'lcd' && c.conf >= 40 && c.h >= src.height * (region ? 0.12 : 0.05));
+  try {
+    onStep('Reading the scale…');
+    const w = await ssd();
+    for (const size of sizes){
+      const {cv, scale} = canvasOf(src, size);
+      const {data} = await w.recognize(cv, {}, {blocks: true, text: false});
+      numbersFrom(data).forEach(n => cands.push({...n, h: n.h / scale, src: 'lcd'}));
+    }
+    // backlit displays: light digits on a dark panel
+    if (!tall()) for (const size of sizes){
+      const {cv, scale} = canvasOf(src, size);
+      const {data} = await w.recognize(inverted(cv), {}, {blocks: true, text: false});
+      numbersFrom(data).forEach(n => cands.push({...n, h: n.h / scale, src: 'lcd'}));
+    }
+  } catch (e) { console.error(e); }
+  try {
+    const w = await ocr();
+    const {cv, scale} = canvasOf(src, 1400);
+    const {data} = await w.recognize(cv, {thresholding_method: '1'}, {blocks: true, text: true});
+    numbersFrom(data).forEach(n => cands.push({...n, h: n.h / scale, src: 'print'}));
+    const txt = ` ${String(data.text || '').toLowerCase().replace(/[^a-z0-9. ]+/g, ' ')} `;
+    if (/\d\s*(lbs?|lb\b)| lbs? /.test(txt)) unit = 'lb'; else if (/\d\s*oz\b| oz /.test(txt)) unit = 'oz'; else if (/\d\s*kg\b| kg /.test(txt)) unit = 'kg'; else if (/\d\s*g\b| g /.test(txt)) unit = 'g'; else if (/\d\s*ml\b| ml /.test(txt)) unit = 'ml';
+  } catch (e) { console.error(e); }
+  finally { releaseSoon(); }
+  const srcH = src.height;
+  if (full.close) full.close();
+  // the reading is the biggest number on the scale; small printed labels (TARE, model numbers) and shaky reads are dropped
+  const ok = cands.filter(c => c.conf >= 40 && c.h >= srcH * (region ? 0.12 : 0.04));
+  const maxH = Math.max(0, ...ok.map(c => c.h));
+  const big = ok.filter(c => c.h >= maxH * 0.45);
+  big.sort((a, b) => (b.h * (b.conf + 20) * (b.src === 'lcd' ? 1 : 0.55)) - (a.h * (a.conf + 20) * (a.src === 'lcd' ? 1 : 0.55)));
+  const best = big[0] || null;
+  return {value: best ? best.v : null, text: best ? best.t : '', unit, others: [...new Set(big.slice(1).map(c => c.v))].filter(v => !best || v !== best.v).slice(0, 4)};
+}
+
+// Read a block of printed text (a recipe card, an ingredient list on paper or a screen) as lines in reading order.
+export async function readText(blob, onStep = () => {}){
+  const src = await bitmap(blob);
+  const w = await ocr();
+  const lines = (data) => {
+    const out = [];
+    for (const b of data.blocks || []) for (const p of b.paragraphs || []) for (const l of p.lines || []){
+      const words = (l.words || []).filter(x => String(x.text || '').trim());
+      if (!words.length) continue;
+      const conf = words.reduce((a, x) => a + x.confidence, 0) / words.length;
+      out.push({text: words.map(x => x.text).join(' '), conf, y: l.bbox.y0, x: l.bbox.x0});
+    }
+    return out;
+  };
+  let best = [];
+  try {
+    await w.setParameters({tessedit_pageseg_mode: '4'});            // one column of text, lines of different sizes
+    for (const [i, [size, method]] of [[1700, '1'], [1300, '2']].entries()){
+      onStep(i ? 'Reading the list again…' : 'Reading the list…');
+      const {cv} = canvasOf(src, size);
+      const {data} = await w.recognize(cv, {thresholding_method: method}, {blocks: true, text: false});
+      const L = lines(data).filter(l => l.conf >= 45 && /[a-z]{2}/i.test(l.text));
+      const score = L.reduce((a, l) => a + l.text.length * l.conf, 0);
+      if (score > best.reduce((a, l) => a + l.text.length * l.conf, 0)) best = L;
+      if (L.length >= 3 && L.reduce((a, l) => a + l.conf, 0) / L.length > 80) break;
+    }
+  } finally {
+    try { await w.setParameters({tessedit_pageseg_mode: '11'}); } catch {}
+    releaseSoon(); if (src.close) src.close();
+  }
+  return best.map(l => l.text.replace(/\s+([,.;:])/g, '$1').trim()).join('\n');
+}

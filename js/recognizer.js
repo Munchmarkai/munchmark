@@ -163,3 +163,17 @@ export async function classifyCrop(blob){
   return {shape: sh[si] >= 0.3 ? SETS.pack.names[si] : null, shapeP: sh[si], role: pa[pi] >= 0.2 ? PANTRY[pi][3] : null, food: SETS.pantry.names[pi], foodP: pa[pi]};
 }
 export function isReady(){ return !!vision; }
+
+// Image fingerprints for matching your own things (bottles, containers): the whole photo and its center.
+// Two photos of the same object score close to 1; different objects score lower.
+export async function embedViews(blob){
+  await load();
+  const bmp = await createImageBitmap(blob);
+  const W = bmp.width, H = bmp.height, s = Math.min(W, H) * 0.62;
+  const cv = document.createElement('canvas'); const k = Math.min(1, 336 / s);
+  cv.width = cv.height = Math.max(1, Math.round(s * k));
+  cv.getContext('2d').drawImage(bmp, (W - s) / 2, (H - s) / 2, s, s, 0, 0, cv.width, cv.height);
+  const crop = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.9));
+  if (bmp.close) bmp.close();
+  return [Array.from(await embedImage(blob)), Array.from(await embedImage(crop))];
+}

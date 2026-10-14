@@ -19,8 +19,11 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21" stroke-linecap="round"/></svg>
       Macro Lens
     </div>
-    <button type="button" class="btn ghost sm" id="install-btn" hidden>Install app</button>
-    <span class="offline-pill" id="offline-pill" hidden>Offline</span>
+    <span class="top-right">
+      <button type="button" class="btn ghost sm" id="install-btn" hidden>Install app</button>
+      <span class="offline-pill" id="offline-pill" hidden>Offline</span>
+      <button type="button" class="iconbtn" id="body-btn" data-action="tab" data-tab="body" aria-label="Body, stats and settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 20c1.2-3.8 4-5.6 7.5-5.6s6.3 1.8 7.5 5.6"/></svg></button>
+    </span>
   </header>
 
   <!-- TODAY -->
@@ -44,6 +47,8 @@
       </div>
       <div class="sum-foot tnum"><span>Eaten <b id="kcal-eaten">0</b></span><span>Goal <b id="kcal-goal">2,200</b> kcal <button type="button" class="linkbtn" id="goal-set" data-action="tab" data-tab="body">Personalize</button></span></div>
     </div>
+    <div class="card sec" id="water-card"></div>
+    <div class="card sec" id="ww-card"></div>
     <div class="sec">
       <div class="sec-head"><h2 class="h">Last 7 days</h2><span class="sub" id="week-avg"></span></div>
       <div class="week" id="week"></div>
@@ -154,8 +159,29 @@
     <div id="wk-body" class="view"></div>
   </section>
 
+  <!-- MEALS -->
+  <section class="view" id="view-meals" aria-label="Saved meals" hidden>
+    <div class="seg modes" role="tablist" aria-label="Meals">
+      <button type="button" role="tab" data-action="tab" data-tab="meals" aria-selected="true">My meals</button>
+      <button type="button" role="tab" data-action="tab" data-tab="containers" aria-selected="false">Containers</button>
+      <button type="button" role="tab" data-action="tab" data-tab="pantry" aria-selected="false">Pantry</button>
+    </div>
+    <div id="meals-body" class="view"></div>
+  </section>
+
+  <!-- SPORTS -->
+  <section class="view" id="view-sports" aria-label="Sports" hidden>
+    <div id="sports-body" class="view"></div>
+    <input type="file" id="in-health" accept=".zip,.csv,.json,application/zip,text/csv,application/json" multiple class="vh" tabindex="-1">
+  </section>
+
   <!-- PANTRY -->
   <section class="view" id="view-pantry" aria-label="Pantry and meal ideas" hidden>
+    <div class="seg modes" role="tablist" aria-label="Meals">
+      <button type="button" role="tab" data-action="tab" data-tab="meals" aria-selected="false">My meals</button>
+      <button type="button" role="tab" data-action="tab" data-tab="containers" aria-selected="false">Containers</button>
+      <button type="button" role="tab" data-action="tab" data-tab="pantry" aria-selected="true">Pantry</button>
+    </div>
     <div class="sec">
       <div class="sec-head"><h2 class="h">Scan your groceries</h2><span class="sub" id="pan-count"></span></div>
       <div class="frame" id="pframe">
@@ -195,19 +221,12 @@
         <div class="field"><label for="g-c">Carbs g</label><input type="number" id="g-c" inputmode="numeric"></div>
         <div class="field"><label for="g-f">Fat g</label><input type="number" id="g-f" inputmode="numeric"></div>
       </div>
-      <p class="fine">Daily totals. Meal ideas split them across your meals.</p>
+      <p class="fine" id="g-hint">Daily totals. Meal ideas split them across your meals.</p>
       <div class="field">
-        <span class="lbl" id="meals-lbl">Meals a day</span>
-        <div class="seg" role="group" aria-labelledby="meals-lbl">
-          <button type="button" data-action="pan-meals" data-n="2">2</button>
-          <button type="button" data-action="pan-meals" data-n="3">3</button>
-          <button type="button" data-action="pan-meals" data-n="4">4</button>
-        </div>
-      </div>
-      <div class="chips">
-        <button type="button" class="chip" data-action="pan-opt" data-opt="snack">+ Daily snack</button>
-        <button type="button" class="chip" data-action="pan-opt" data-opt="lowSodium">Keep sodium low</button>
-        <button type="button" class="chip" data-action="pan-opt" data-opt="highFiber">Favor fiber</button>
+        <label for="diet-in">Describe how you want to eat <span class="hint">(optional)</span></label>
+        <textarea id="diet-in" rows="3" placeholder="e.g. 3 meals and a snack, vegetarian, no mushrooms, keep sodium low, high fiber"></textarea>
+        <p class="fine">Meals and snacks a day, diets (vegetarian, vegan, keto, low carb, halal…), allergies, foods to skip or use up, sodium or sugar limits, or exact numbers like “2000 calories” or “180 g protein”.</p>
+        <div id="diet-sum" class="sec"></div>
       </div>
       <div class="row2">
         <button type="button" class="btn primary" data-action="pan-ideas">Meal ideas</button>
@@ -301,6 +320,18 @@
       <div class="tblwrap"><table class="hist tnum" id="hist"></table></div>
     </div>
     <div class="sec">
+      <h2 class="h">Water weight estimate</h2>
+      <p class="fine">These make the water-weight estimate on Today more accurate. They stay on this phone.</p>
+      <label class="switch" for="set-creatine"><span><b>I take creatine</b><small>Creatine stores extra water in muscle, usually 1–3 lb while you take it.</small></span><input type="checkbox" id="set-creatine" role="switch"></label>
+      <div id="cycle-fields" class="sec" hidden>
+        <p class="fine">Optional: many people hold 1–3 lb more water in the days before a period. Add your last start date to account for it.</p>
+        <div class="grid2">
+          <div class="field"><label for="b-cycle">Last period started</label><input type="date" id="b-cycle"></div>
+          <div class="field"><label for="b-cyclelen">Usual cycle length</label><div class="unit"><input type="number" id="b-cyclelen" inputmode="numeric" min="21" max="40" placeholder="28"><em>days</em></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="sec">
       <h2 class="h">Settings</h2>
       <label class="switch" for="set-wrapped"><span><b>Wrapped-style weekly recap</b><small>Your week as full-screen stories. Off shows the same recap as a simple report.</small></span><input type="checkbox" id="set-wrapped" role="switch"></label>
     </div>
@@ -313,18 +344,20 @@
       </div>
       <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
       <p class="fine" id="rec-about"></p>
-      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode data: Open Food Facts, available under the Open Database License. Food recognizer: OpenAI CLIP, run on your phone with Transformers.js. Estimates are for tracking, not medical advice.</p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode data: Open Food Facts, available under the Open Database License. Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
     </div>
   </section>
 </div>
 
+<input type="file" id="in-anycam" accept="image/*" capture="environment" class="vh" tabindex="-1" aria-hidden="true">
+<input type="file" id="in-anygal" accept="image/*" class="vh" tabindex="-1" aria-hidden="true">
 <nav class="tabs" aria-label="Sections">
   <div class="tabs-in">
     <button type="button" class="tab" data-action="tab" data-tab="today" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5"/><path d="M8.5 12.5h7M8.5 9h4M8.5 16h5.5"/></svg>Today</button>
     <button type="button" class="tab" data-action="tab" data-tab="week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M5 20V12M10 20V6M15 20v-9M20 20V9"/></svg>Week</button>
     <button type="button" class="tab-scan" data-action="tab" data-tab="scan" aria-label="Add food"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><circle cx="12" cy="12" r="3.2"/></svg></button>
-    <button type="button" class="tab" data-action="tab" data-tab="pantry"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 11.1a1.5 1.5 0 0 1-1.5 1.4H7.7a1.5 1.5 0 0 1-1.5-1.4z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>Pantry</button>
-    <button type="button" class="tab" data-action="tab" data-tab="body"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.5"/><path d="M8 21v-6l-2-1 1.5-5.5h9L18 14l-2 1v6"/></svg>Body</button>
+    <button type="button" class="tab" data-action="tab" data-tab="meals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 11.5h17a8.5 8.5 0 0 1-17 0z"/><path d="M8 7.5c0-1.2 1-1.6 1-2.8M12 7.5c0-1.2 1-1.6 1-2.8M16 7.5c0-1.2 1-1.6 1-2.8"/></svg>Meals</button>
+    <button type="button" class="tab" data-action="tab" data-tab="sports"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4h10v4a5 5 0 0 1-10 0z"/><path d="M7 6H4.5v1a3 3 0 0 0 3 3M17 6h2.5v1a3 3 0 0 1-3 3M12 13v3.5M8.5 20h7M9.5 20l.5-3.5h4l.5 3.5"/></svg>Sports</button>
   </div>
 </nav>
 <div class="toast" id="toast" role="status" hidden></div>

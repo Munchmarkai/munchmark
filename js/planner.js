@@ -30,7 +30,7 @@ export function tasteOf(food){
   if (r === 'dairy') return 'sweet';
   return 'savory';
 }
-function bounds(food){
+function bounds(food, fatBoost = 1){
   const r = roleOf(food), p = food.p, kcal = num(p[0]);
   let lo = 50, hi = 250;
   if (r === 'protein') { lo = 60; hi = 250; if (num(p[1]) > 60) { lo = 20; hi = 70; } else if (kcal > 400) { lo = 15; hi = 60; } }
@@ -38,7 +38,7 @@ function bounds(food){
   if (r === 'carb') { lo = 40; hi = 350; if (kcal > 240) { lo = 25; hi = 130; } }
   if (r === 'veg') { lo = 50; hi = 250; if (/salsa/i.test(food.name)) { lo = 30; hi = 64; } else if (/sauce|marinara/i.test(food.name)) { lo = 60; hi = 130; } }
   if (r === 'fruit') { lo = 60; hi = 250; if (kcal > 200) { lo = 15; hi = 45; } }
-  if (r === 'fat') { lo = 8; hi = 40; if (kcal > 800) { lo = 5; hi = 15; } else if (kcal < 300) { lo = 30; hi = 100; } }
+  if (r === 'fat') { lo = 8; hi = 40; if (kcal > 800) { lo = 5; hi = 15; } else if (kcal < 300) { lo = 30; hi = 100; } hi *= fatBoost; }
   if (r === 'meal') { const u = num(food.unitG) || 150; lo = Math.max(80, u * 0.75); hi = Math.min(600, u * 3); }
   return [lo, hi];
 }
@@ -61,7 +61,8 @@ function compatible(foods){
 function solve(foods, t, w){
   const n = foods.length, A = foods.map(f => [num(f.p[0]), num(f.p[1]), num(f.p[2]), num(f.p[3])]);
   const T = [t.calories, t.protein_g, t.carbs_g, t.fat_g].map(v => Math.max(v, 1));
-  const B = foods.map(bounds).map(([lo, hi]) => [lo / 100, hi / 100]);
+  const fatBoost = Math.min(3, Math.max(1, (t.fat_g * 9 / Math.max(1, t.calories)) / 0.3));
+  const B = foods.map(f => bounds(f, fatBoost)).map(([lo, hi]) => [lo / 100, hi / 100]);
   const x = B.map(([lo, hi]) => (lo + hi) / 4 + lo / 2);
   const resid = () => [0, 1, 2, 3].map(k => A.reduce((a, row, i) => a + row[k] * x[i], 0) - T[k]);
   for (let it = 0; it < 40; it++){
@@ -102,9 +103,14 @@ export function portion(food, grams){
 }
 
 function totals(parts){
-  const t = new Array(19).fill(0);
+  const t = new Array(20).fill(0);
   for (const {food, grams} of parts) food.p.forEach((v, i) => { t[i] += num(v) * grams / 100; });
   return t;
+}
+function prefScore(foods, opts){
+  if (!opts.prefer || !opts.prefer.length) return 0;
+  const hits = foods.filter(f => opts.prefer.some(p => p.test(f))).length;
+  return Math.min(8, hits * 4);
 }
 function matchScore(t, target, opts){
   const T = [target.calories, target.protein_g, target.carbs_g, target.fat_g];
@@ -114,6 +120,7 @@ function matchScore(t, target, opts){
   let s = 100 - (err / (ws || 1)) * 100;
   if (opts.sodiumBudget && t[K.sodium] > opts.sodiumBudget) s -= Math.min(15, (t[K.sodium] / opts.sodiumBudget - 1) * 15);
   if (opts.highFiber) s += Math.min(5, t[K.fiber] / 2);
+  if (opts.lowSugar && t[5] > 15) s -= Math.min(10, (t[5] - 15) / 2);
   return Math.max(0, Math.min(100, s));
 }
 
@@ -121,7 +128,7 @@ const SNACK_TEMPLATES = [['P','S'], ['S','F'], ['P','F'], ['C','F'], ['P']];
 const TEMPLATES = [['P','C','S'], ['P','C','S','F'], ['P','C'], ['P','C','F'], ['P','S','F'], ['P','S'], ['C','S','F'], ['M','S'], ['M']];
 
 export function mealIdeas(pantry, target, opts = {}){
-  const usable = pantry.filter(f => f && f.p && num(f.p[0]) > 0 && roleOf(f) !== 'snack');
+  const usable = pantry.filter(f => f && f.p && num(f.p[0]) > 0 && roleOf(f) !== 'snack' && !(opts.exclude && opts.exclude(f)));
   const by = {P:[], C:[], S:[], F:[], M:[]};
   for (const f of usable){
     const r = roleOf(f);
@@ -142,7 +149,7 @@ export function mealIdeas(pantry, target, opts = {}){
     const parts = foods.map((food, i) => { const pr = portion(food, grams[i]); return {food, grams: pr.grams, text: pr.text}; }).filter(p => p.grams > 0);
     const t = totals(parts);
     const noProtein = !foods.some(f => ['protein','dairy','meal'].includes(roleOf(f)));
-    out.push({parts, totals: t, match: matchScore(t, target, opts) - Math.max(0, parts.length - 3) * 1.5 - (noProtein ? 4 : 0), taste: foods.some(f => tasteOf(f) === 'sweet') ? 'sweet' : 'savory'});
+    out.push({parts, totals: t, match: matchScore(t, target, opts) - Math.max(0, parts.length - 3) * 1.5 - (noProtein ? 4 : 0), rankBonus: prefScore(foods, opts), taste: foods.some(f => tasteOf(f) === 'sweet') ? 'sweet' : 'savory'});
   };
   for (const tpl of (opts.templates || TEMPLATES)){
     const pools = tpl.map(s => by[s]);
@@ -153,7 +160,7 @@ export function mealIdeas(pantry, target, opts = {}){
     };
     rec(0, []);
   }
-  out.sort((a, b) => b.match - a.match);
+  out.sort((a, b) => (b.match + (b.rankBonus || 0)) - (a.match + (a.rankBonus || 0)));
   // keep it varied: no repeat of the same main food more than twice, no identical protein+carb pair
   const picked = [], useCount = new Map(), pairs = new Set();
   for (const idea of out){
@@ -175,39 +182,45 @@ export function nameOf(parts){
 
 // A whole day: `meals` meals plus an optional snack, chosen to add up to the daily goals.
 export function dayPlan(pantry, daily, opts = {}){
-  const meals = opts.meals || 3, snack = opts.snack !== false;
-  const mealShare = snack ? 0.88 / meals : 1 / meals;
-  const mt = scaleT(daily, mealShare), st = scaleT(daily, 0.12);
-  const sodiumBudget = opts.lowSodium ? 2300 / (meals + (snack ? 1 : 0)) : 0;
+  const meals = Math.max(1, Math.min(4, opts.meals || 3)), snacks = Math.max(0, Math.min(2, opts.snacks ?? 1)), snack = snacks > 0;
+  const snackShare = 0.12 * snacks, mealShare = (1 - snackShare) / meals;
+  const mt = scaleT(daily, mealShare), st = scaleT(daily, snackShare / Math.max(1, snacks));
+  const sodiumBudget = opts.lowSodium ? (opts.sodiumMax || 1500) / (meals + snacks) : 0;
   const pool = mealIdeas(pantry, mt, {...opts, sodiumBudget, count: 30});
   const spool = snack ? mealIdeas(pantry, st, {...opts, sodiumBudget, count: 12, templates: SNACK_TEMPLATES}) : [];
-  const slots = meals === 2 ? ['lunch','dinner'] : meals === 4 ? ['breakfast','lunch','dinner','dinner'] : ['breakfast','lunch','dinner'];
+  const slots = opts.noBreakfast
+    ? (meals === 1 ? ['dinner'] : meals === 2 ? ['lunch','dinner'] : meals === 3 ? ['lunch','dinner','dinner'] : ['lunch','lunch','dinner','dinner'])
+    : (meals === 1 ? ['dinner'] : meals === 2 ? ['lunch','dinner'] : meals === 4 ? ['breakfast','lunch','dinner','dinner'] : ['breakfast','lunch','dinner']);
   const isBreakfasty = i => i.taste === 'sweet' || /\begg/i.test(i.name);
-  const chosen = [], run = new Array(19).fill(0), usedMain = new Set();
+  const chosen = [], run = new Array(20).fill(0), usedMain = new Set();
   const dayErr = t => { const T = [daily.calories, daily.protein_g, daily.carbs_g, daily.fat_g], w = [3, 2, 1, 1]; return [0, 1, 2, 3].reduce((a, k) => a + w[k] * Math.abs(t[k] - T[k]) / Math.max(T[k], 1), 0); };
   for (let m = 0; m < meals; m++){
     const left = meals - m;
     let best = null, bestE = Infinity;
     const wantBreakfast = slots[m] === 'breakfast';
     const fits = pool.filter(i => wantBreakfast ? isBreakfasty(i) : i.taste !== 'sweet');
-    for (const idea of (fits.length ? fits : pool)){
-      const main = idea.parts[0].food.key;
-      if (usedMain.has(main) || chosen.includes(idea)) continue;
-      const t = run.map((v, i) => v + idea.totals[i] * left);   // assume the rest look alike
-      const e = dayErr(t);
-      if (e < bestE) { bestE = e; best = idea; }
+    // strictest first: right style + a new main food; then relax so every meal gets filled
+    const tiers = [[fits, true, false], [fits, false, false], [pool, true, false], [pool, false, false], [pool, false, true]];
+    for (const [list, freshMain, allowRepeat] of tiers){
+      for (const idea of list){
+        if (freshMain && usedMain.has(idea.parts[0].food.key)) continue;
+        if (!allowRepeat && chosen.includes(idea)) continue;
+        const e = dayErr(run.map((v, i) => v + idea.totals[i] * left));   // assume the rest look alike
+        if (e < bestE) { bestE = e; best = idea; }
+      }
+      if (best) break;
     }
     if (!best) break;
     chosen.push(best); usedMain.add(best.parts[0].food.key); best.totals.forEach((v, i) => run[i] += v);
   }
-  let snackIdea = null;
-  if (snack && spool.length){
-    let bestE = Infinity;
-    for (const s of spool){ const e = dayErr(run.map((v, i) => v + s.totals[i])); if (e < bestE) { bestE = e; snackIdea = s; } }
-    if (snackIdea) snackIdea.totals.forEach((v, i) => run[i] += v);
+  const snackIdeas = [];
+  for (let k = 0; k < snacks && spool.length; k++){
+    let bestE = Infinity, pick = null;
+    for (const s of spool){ if (snackIdeas.includes(s)) continue; const e = dayErr(run.map((v, i) => v + s.totals[i] * (snacks - k))); if (e < bestE) { bestE = e; pick = s; } }
+    if (pick) { snackIdeas.push(pick); pick.totals.forEach((v, i) => run[i] += v); }
   }
   const plan = chosen.map((idea, i) => ({slot: slots[i] || 'dinner', idea}));
-  if (snackIdea) plan.push({slot:'snack', idea:snackIdea});
+  snackIdeas.forEach(s => plan.push({slot:'snack', idea:s}));
   return {plan, totals: run, match: Math.max(0, 100 - dayErr(run) / 7 * 100)};
 }
 export const scaleT = (t, s) => ({calories: t.calories * s, protein_g: t.protein_g * s, carbs_g: t.carbs_g * s, fat_g: t.fat_g * s});
