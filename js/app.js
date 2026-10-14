@@ -5,6 +5,9 @@ import { summarize, weekStart, addDays, SPORTS } from './week.js';
 import { playWrapped } from './wrapped.js';
 import { parseMeal, labelByName } from './parse.js';
 import * as store from './store.js';
+import { offP100, getProduct, displayName } from './off.js';
+import { scan as packScan, setVocab } from './packscan.js';
+import { roleFromCategories } from './brands.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -60,9 +63,10 @@ const S = {
   photo:null, rec:{state:'unknown', progress:0, text:'', results:null, busy:false, error:'', added:new Set()},
   bc:{stream:null, timer:0, busy:false},
   draft:{}, dirty:false,
-  pantry:[], pan:{photo:null, busy:false, step:0, steps:0, detect:null, sel:new Set(), ideas:null, plan:null, mode:'ideas'},
+  pantry:[], pan:{photo:null, busy:false, stepText:'', frac:0, detect:null, sel:new Set(), pk:null, pkSel:new Set(), ideas:null, plan:null, mode:'ideas'},
   wk:{start:null, report:false}, bcTarget:null,
   bf:{photo:null, busy:false, probs:null, level:null},
+  pk:{busy:false, res:null, step:'', frac:0, added:new Set(), choice:{}},
 };
 let DB = null, INDEX = null, BYID = null, R = null;
 
@@ -283,19 +287,26 @@ function renderPhoto(){
   $('#frame-img').hidden = !p; if (p && $('#frame-img').src !== p.url) $('#frame-img').src = p.url;
   $('#frame-empty').hidden = !!p; $('#clear-photo').hidden = !p || r.busy;
   let html = '';
+  const pkFound = p && !S.pk.busy && S.pk.res && S.pk.res.items.length;
+  let recNote = '';
   if (r.state === 'missing' || r.state === 'error') {
-    html = `<div class="recbox"><span><b>Food recognizer</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : 'Downloads once (about 150 MB, Wi-Fi recommended), then works offline on your phone.'}</span></span>
-      <button type="button" class="btn primary" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download recognizer'}</button></div>`;
+    const box = `<div class="recbox"><span><b>${pkFound ? 'Not a packaged food?' : 'Food recognizer'}</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : pkFound ? 'For home-cooked or restaurant meals, download the food recognizer once (about 150 MB, Wi-Fi).' : 'Packaged foods are read from the label. For meals and fresh food, download the recognizer once (about 150 MB, Wi-Fi recommended); then it works offline.'}</span></span>
+      <button type="button" class="btn ${pkFound ? 'ghost' : 'primary'}" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download recognizer'}</button></div>`;
+    if (pkFound) recNote = box; else html = box;
   } else if (r.state === 'loading') {
     html = `<div class="recbox"><span><span class="spin"></span> <b id="rec-text">${esc(r.text || 'Starting…')}</b></span><div class="progress"><i id="rec-bar" style="width:${Math.round(r.progress * 100)}%"></i></div></div>`;
   } else if (r.busy) {
     html = `<div class="recbox"><span><span class="spin"></span> <b>Recognizing…</b></span></div>`;
   }
+  const pk = S.pk;
+  if (p && pk.busy) html = `<div class="recbox"><span><span class="spin"></span> <b id="pk-step">${esc(pk.step || 'Reading the label…')}</b></span></div>` + html;
   $('#rec-status').innerHTML = html;
-  if (!r.results || r.busy) { $('#rec-results').innerHTML = ''; return; }
+  const pkItems = p && !pk.busy && pk.res ? pk.res.items.slice(0, 3) : [];
+  const pkHTML = pkItems.length ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
+  if (!r.results || r.busy) { $('#rec-results').innerHTML = pkHTML + recNote; return; }
   const unsure = r.results[0].p < 0.3;
-  $('#rec-results').innerHTML = `<div class="sec"><div class="sec-head"><h2 class="h">${unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
-    ${unsure ? '<p class="fine">Not sure about this one. Pick the closest match, or type it in.</p>' : ''}
+  $('#rec-results').innerHTML = pkHTML + `<div class="sec"><div class="sec-head"><h2 class="h">${unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
+    ${pkItems.length ? '<p class="fine">Not packaged? These are the closest dishes.</p>' : unsure ? '<p class="fine">Not sure about this one. Pick the closest match, or type it in.</p>' : ''}
     <ul class="guesses">${r.results.map(g => { const L = labelByName(g.label); const on = r.added.has(g.label);
       return `<li class="guess ${on ? 'added' : ''}"><span><b>${esc(cap(g.label))}</b><small>${esc(L[2])} · ${int(labelKcal(L))} kcal</small><span class="pct"><i style="width:${Math.max(3, Math.round(g.p * 100))}%"></i></span></span>
         <button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="guess-add" data-label="${esc(g.label)}">${on ? 'Added' : 'Add'}</button></li>`; }).join('')}</ul></div>`;
@@ -393,7 +404,7 @@ async function prepPhoto(file){
   const thumb = tc.toDataURL('image/jpeg', 0.62);
   if (src.close) src.close();
   if (!blob) throw new Error('encode');
-  return {blob, thumb, url:URL.createObjectURL(blob)};
+  return {blob, thumb, url:URL.createObjectURL(blob), orig:file};
 }
 async function setPhoto(file){
   if (!file) return;
@@ -402,6 +413,7 @@ async function setPhoto(file){
     if (S.photo) URL.revokeObjectURL(S.photo.url);
     S.photo = p; S.rec.results = null; S.rec.added = new Set();
     renderPhoto();
+    runPackaged();
     if (S.rec.state === 'ready') classifyPhoto();
   } catch { toast('Couldn’t open that photo. Try a JPEG or PNG.'); }
 }
@@ -440,40 +452,95 @@ function bcStop(){
   const g = $('#bc-guide'); if (g) g.hidden = true; const em = $('#bc-empty'); if (em) em.hidden = false;
   const s1 = $('#bc-start'), s2 = $('#bc-stop'); if (s1) s1.disabled = false; if (s2) s2.disabled = true;
 }
-function offP100(n){
-  const g = k => { const v = Number(n[k]); return Number.isFinite(v) ? v : null; };
-  const x = (k, m) => { const v = g(k); return v == null ? null : v * m; };
-  const kcal = g('energy-kcal_100g') ?? (g('energy_100g') != null ? g('energy_100g') / 4.184 : null);
-  const sodium = g('sodium_100g') != null ? g('sodium_100g') * 1000 : (g('salt_100g') != null ? g('salt_100g') * 400 : null);
-  return [kcal, g('proteins_100g'), g('carbohydrates_100g'), g('fat_100g'), g('fiber_100g'), g('sugars_100g'), g('saturated-fat_100g'),
-    x('cholesterol_100g', 1000), sodium, x('potassium_100g', 1000), x('calcium_100g', 1000), x('iron_100g', 1000), x('magnesium_100g', 1000), x('zinc_100g', 1000),
-    x('vitamin-a_100g', 1e6), x('vitamin-c_100g', 1000), x('vitamin-d_100g', 1e6), x('vitamin-b12_100g', 1e6), x('vitamin-b9_100g', 1e6) ?? x('folates_100g', 1e6)];
+function offPlateItem(p){
+  const opts = [];
+  if (p.servingG) opts.push({t: tidy(p.servingSize) || '1 serving', g: p.servingG});
+  opts.push({t:'1 oz', g:28.35}, {t:'100 g', g:100}, {t:'grams', g:1});
+  return {id:uid(), src:'off', code:p.code, name:displayName(p), sub:`${p.quantity ? p.quantity + ' · ' : ''}Open Food Facts`, p:offP100(p.nutriments), opts, opt:0, qty:1};
 }
+function offPantryFood(p){
+  return {key:'off' + p.code, src:'off', code:p.code, name:displayName(p), p:offP100(p.nutriments), unitG:p.servingG || 0, unitD:p.servingG ? (tidy(p.servingSize) || '1 serving') : '', group:0,
+    role: roleFromCategories(p.categories, p.name) || null, image:p.image || ''};
+}
+const hasKcal = p => p && p.nutriments && (Number.isFinite(Number(p.nutriments['energy-kcal_100g'])) || Number.isFinite(Number(p.nutriments['energy_100g'])));
 async function lookupBarcode(code){
   code = String(code || '').replace(/\D/g, '');
   if (code.length < 8 || code.length > 14) { bcMsg('Barcodes are 8 to 14 digits. Check the number and try again.', true); return; }
   if (!navigator.onLine) { bcMsg('You’re offline. Barcode lookups need a connection; typing foods works offline.', true); return; }
   bcMsg('Looking up ' + code + '…');
   try {
-    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,brands,nutriments,serving_quantity,serving_size`);
-    const j = await res.json();
-    const pr = j && j.product;
-    if (!pr || j.status === 0 || !pr.nutriments) { bcMsg('That barcode isn’t in Open Food Facts yet. Search for the food under Type instead.', true); return; }
-    const p = offP100(pr.nutriments);
-    if (p[0] == null) { bcMsg('Found the product, but it has no nutrition data. Search for it under Type instead.', true); return; }
-    const name = [pr.brands ? String(pr.brands).split(',')[0].trim() : '', pr.product_name || 'Packaged food'].filter(Boolean).join(' ');
-    const sq = num(pr.serving_quantity);
-    const opts = [];
-    if (sq) opts.push({t: tidy(pr.serving_size) || `1 serving`, g: sq});
-    opts.push({t:'1 oz', g:28.35}, {t:'100 g', g:100}, {t:'grams', g:1});
+    const pr = await getProduct(code);
+    if (!pr) { bcMsg('That barcode isn’t in Open Food Facts yet. Search for the food under Type instead.', true); return; }
+    if (!hasKcal(pr)) { bcMsg('Found the product, but it has no nutrition data. Search for it under Type instead.', true); return; }
+    const name = displayName(pr);
     if (S.bcTarget === 'pantry') {
       S.bcTarget = null; bcMsg('');
-      addPantry({key:'off' + code, src:'off', code, name, p, unitG: sq || 0, unitD: sq ? (tidy(pr.serving_size) || '1 serving') : '', group:0});
+      addPantry(offPantryFood(pr));
       setTab('pantry'); toast(`Added ${name} to your pantry`); return;
     }
-    addToPlate([{id:uid(), src:'off', code, name, sub:`Barcode ${code} · Open Food Facts`, p, opts, opt:0, qty: sq ? 1 : 1}]);
-    bcMsg(`Added ${name}${sq ? '' : '. No serving size listed, so it’s set to 1 oz; adjust it on your plate.'}`);
+    addToPlate([offPlateItem(pr)]);
+    bcMsg(`Added ${name}${pr.servingG ? '' : '. No serving size listed, so it’s set to 1 oz; adjust it on your plate.'}`);
   } catch { bcMsg('Couldn’t reach Open Food Facts. Check your connection and try again.', true); }
+}
+
+/* ---------- packaged-food matches (shared by Photo and Pantry) ---------- */
+const localMatches = q => search(INDEX, q, 4).map(f => ({ndb:f[0], name:shortName(f[1]), full:f[1], kcal:num(f[3])}));
+function pkChoice(it){ const c = S.pk.choice[it.id]; return c != null ? c : (it.matches.length ? 'm0' : it.local && it.local.length ? 'l0' : 'none'); }
+function pkPicked(it){
+  const c = pkChoice(it);
+  if (c[0] === 'm') return {kind:'off', product: it.matches[Number(c.slice(1))]?.product};
+  if (c[0] === 'l') return {kind:'usda', food: it.local[Number(c.slice(1))]};
+  return {kind:'none'};
+}
+const CONF_TXT = {sure:'Strong match', likely:'Likely match', maybe:'Best guess'};
+function pkCard(it, mode){
+  const pick = pkPicked(it), p = pick.product, f = pick.food;
+  let title = 'No match picked', meta = '', img = '';
+  if (p) { title = displayName(p); const k = num(offP100(p.nutriments)[0]); meta = [p.quantity, p.servingG ? `${int(k * p.servingG / 100)} kcal per ${tidy(p.servingSize) || p.servingG + ' g'}` : `${int(k)} kcal per 100 g`].filter(Boolean).join(' · '); img = p.image; }
+  else if (f) { title = f.name; meta = `${int(f.kcal)} kcal per 100 g · USDA`; }
+  const opts = [...it.matches.map((m, i) => [`m${i}`, `${displayName(m.product)}${m.product.quantity ? ' · ' + m.product.quantity : ''}`]),
+    ...(it.local || []).map((l, i) => [`l${i}`, `${l.name} (USDA, generic)`]), ['none', 'None of these']];
+  const c = pkChoice(it);
+  const on = mode === 'pantry' ? S.pan.pkSel.has(it.id) : S.pk.added.has(it.id);
+  const shape = it.shape && it.shape !== 'produce' ? ` · ${it.shape}` : '';
+  return `<li class="pk ${on && mode !== 'pantry' ? 'added' : ''}" data-id="${esc(it.id)}">
+    <span class="pk-thumbs"><img src="${esc(it.thumb)}" alt="From your photo">${img ? `<img src="${esc(img)}" alt="Database photo" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>
+    <span class="pk-main"><small class="pk-read">${it.via === 'barcode' ? 'Barcode' : 'Read'}: “${esc(it.via === 'barcode' ? it.code : it.read)}”${esc(shape)}</small>
+      <b>${esc(title)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}
+      ${p || f ? `<em class="conf ${esc(it.conf)}">${CONF_TXT[it.conf] || ''}</em>` : ''}
+      ${opts.length > 1 ? `<select class="alt" data-pk-alt="${esc(it.id)}" data-mode="${mode}" aria-label="Choose the right product">${opts.map(([v, t]) => `<option value="${v}" ${v === c ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
+    </span>
+    ${mode === 'pantry' ? `<input type="checkbox" class="pk-check" data-pk="${esc(it.id)}" ${on ? 'checked' : ''} ${pick.kind === 'none' ? 'disabled' : ''} aria-label="Add ${esc(title)}">`
+      : `<button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="pk-add" data-id="${esc(it.id)}" ${pick.kind === 'none' ? 'disabled' : ''}>${on ? 'Added' : 'Add'}</button>`}
+  </li>`;
+}
+async function pickedFood(it, forPantry){
+  const pick = pkPicked(it);
+  if (pick.kind === 'off') {
+    let pr = pick.product;
+    try { const full = await getProduct(pr.code); if (full) pr = {...pr, ...full, nutriments: {...pr.nutriments, ...full.nutriments}}; } catch {}
+    if (!hasKcal(pr)) return null;
+    return forPantry ? offPantryFood(pr) : offPlateItem(pr);
+  }
+  if (pick.kind === 'usda') {
+    const f = BYID.get(pick.food.ndb); if (!f) return null;
+    if (forPantry) return pantryFood(f[0]);
+    const n = f.length; return usdaItem(f[0], f[n-4] || 100, null, null);
+  }
+  return null;
+}
+async function runPackaged(){
+  const ph = S.photo; if (!ph) return;
+  Object.assign(S.pk, {busy:true, res:null, step:'Reading the label…', frac:0, added:new Set(), choice:{}});
+  renderPhoto();
+  try {
+    const clip = S.rec.state === 'ready' ? await recognizer() : null;
+    const res = await packScan(ph.orig || ph.blob, {single:true, clip, local:localMatches, onStep:(t, f) => { S.pk.step = t; S.pk.frac = f; const el = $('#pk-step'); if (el) el.textContent = t; }});
+    if (S.photo !== ph) return;
+    res.items = res.items.filter(it => it.matches.length && it.conf !== 'maybe' || it.via === 'barcode');
+    S.pk.res = res;
+  } catch (e) { console.error(e); S.pk.res = {items:[], error:true}; }
+  finally { if (S.photo === ph) { S.pk.busy = false; renderPhoto(); } }
 }
 
 /* ---------- typing & search ---------- */
@@ -778,9 +845,9 @@ function renderPantry(){
   $('#pframe-img').hidden = !p.photo; if (p.photo && $('#pframe-img').src !== p.photo.url) $('#pframe-img').src = p.photo.url;
   $('#pframe-empty').hidden = !!p.photo;
   const r = S.rec; let st = '';
-  if (r.state === 'missing' || r.state === 'error') st = `<div class="recbox"><span><b>Food recognizer</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : 'Downloads once (about 150 MB, Wi-Fi recommended), then reads groceries offline. You can also add foods by name or barcode below.'}</span></span><button type="button" class="btn primary" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download recognizer'}</button></div>`;
+  if ((r.state === 'missing' || r.state === 'error') && !p.busy) st = `<div class="recbox"><span><b>Sharper matching (optional)</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : 'Labels are read without it. Download the image model once (about 150 MB, Wi-Fi) and it also checks each package’s shape and spots fresh food like bananas.'}</span></span><button type="button" class="btn ghost" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download image model'}</button></div>`;
   else if (r.state === 'loading') st = `<div class="recbox"><span><span class="spin"></span> <b id="rec-text">${esc(r.text || 'Starting…')}</b></span><div class="progress"><i id="rec-bar" style="width:${Math.round(r.progress * 100)}%"></i></div></div>`;
-  else if (p.busy) st = `<div class="recbox"><span><span class="spin"></span> <b id="pan-step">Looking at your groceries… ${p.step} of ${p.steps || 10}</b></span><div class="progress"><i id="pan-bar" style="width:${Math.round(p.step / (p.steps || 10) * 100)}%"></i></div></div>`;
+  if (p.busy) st = `<div class="recbox"><span><span class="spin"></span> <b id="pan-step">${esc(p.stepText || 'Reading the labels…')}</b></span><div class="progress"><i id="pan-bar" style="width:${Math.round((p.frac || 0) * 100)}%"></i></div></div>` + (r.state === 'missing' ? '' : '');
   $('#pan-status').innerHTML = st;
   renderDetect();
   $('#pan-count').textContent = S.pantry.length ? `${S.pantry.length} item${S.pantry.length === 1 ? '' : 's'}` : '';
@@ -797,26 +864,51 @@ function renderPantry(){
 }
 function renderDetect(){
   const p = S.pan, el = $('#pan-detect');
-  if (!p.detect || p.busy) { el.innerHTML = ''; return; }
-  if (!p.detect.length) { el.innerHTML = `<p class="notice">Couldn't pick out any groceries. Try a closer photo with labels facing the camera, or add foods by name below.</p>`; return; }
-  const n = p.sel.size;
-  el.innerHTML = `<div class="card sec"><div class="sec-head"><h3 class="h">Spotted in your photo</h3><span class="sub">Uncheck anything wrong</span></div>
-    <ul class="detect">${p.detect.map(d => `<li><label><input type="checkbox" data-det="${esc(d.name)}" ${p.sel.has(d.name) ? 'checked' : ''}><span>${esc(d.name)}</span><em>${d.p >= 0.5 ? 'sure' : d.p >= 0.25 ? 'likely' : 'maybe'}</em></label></li>`).join('')}</ul>
-    <button type="button" class="btn primary" data-action="pan-add-detected" ${n ? '' : 'disabled'}>Add ${n} to pantry</button></div>`;
+  if (p.busy) { el.innerHTML = ''; return; }
+  const pkItems = p.pk ? p.pk.items : null;
+  if (!pkItems && !p.detect) { el.innerHTML = ''; return; }
+  let html = '';
+  if (pkItems && pkItems.length) {
+    const n = pkItems.filter(it => p.pkSel.has(it.id) && pkPicked(it).kind !== 'none').length;
+    html += `<div class="card sec"><div class="sec-head"><h3 class="h">Products on your shelf</h3><span class="sub">Fix any wrong match</span></div>
+      ${p.pk.offline ? '<p class="notice">Couldn’t reach the grocery database, so these are generic USDA matches. Try again with a connection for exact brands.</p>' : ''}
+      <ul class="pks">${pkItems.map(it => pkCard(it, 'pantry')).join('')}</ul>
+      <button type="button" class="btn primary" data-action="pan-add-pk" ${n ? '' : 'disabled'}>Add ${n} product${n === 1 ? '' : 's'} to pantry</button></div>`;
+  }
+  if (p.detect && p.detect.length) {
+    const n = p.sel.size;
+    html += `<div class="card sec"><div class="sec-head"><h3 class="h">${pkItems && pkItems.length ? 'Other foods spotted' : 'Spotted in your photo'}</h3><span class="sub">Fresh food without labels</span></div>
+      <ul class="detect">${p.detect.map(d => `<li><label><input type="checkbox" data-det="${esc(d.name)}" ${p.sel.has(d.name) ? 'checked' : ''}><span>${esc(d.name)}</span><em>${d.p >= 0.5 ? 'sure' : d.p >= 0.25 ? 'likely' : 'maybe'}</em></label></li>`).join('')}</ul>
+      <button type="button" class="btn ghost" data-action="pan-add-detected" ${n ? '' : 'disabled'}>Add ${n} to pantry</button></div>`;
+  }
+  if (!html) html = `<p class="notice">Couldn't read any labels in that photo. Get closer so the brand and product name fill more of the frame, turn labels to face the camera, or use the Barcode button below.</p>`;
+  el.innerHTML = html;
 }
 async function scanPantry(file){
   if (!file) return;
   try { const ph = await prepPhoto(file); if (S.pan.photo) URL.revokeObjectURL(S.pan.photo.url); S.pan.photo = ph; } catch { toast('Couldn’t open that photo. Try a JPEG or PNG.'); return; }
-  S.pan.detect = null; renderPantry();
-  if (S.rec.state !== 'ready') { if (S.rec.state === 'unknown') await checkRecognizer(); if (S.rec.state !== 'ready') { renderPantry(); toast('Download the recognizer first, or add foods by name'); return; } }
-  S.pan.busy = true; S.pan.step = 0; S.pan.steps = 10; renderPantry();
+  Object.assign(S.pan, {detect:null, pk:null, pkSel:new Set(), busy:true, stepText:'Starting…', frac:0});
+  renderPantry();
+  const ph = S.pan.photo;
   try {
-    const r = await recognizer();
-    const found = await r.classifyMany(S.pan.photo.blob, (i, n) => { S.pan.step = i; S.pan.steps = n; const t = $('#pan-step'), b = $('#pan-bar'); if (t) t.textContent = `Looking at your groceries… ${i} of ${n}`; if (b) b.style.width = Math.round(i / n * 100) + '%'; });
-    S.pan.detect = found.filter(d => !S.pantry.some(x => x.name === d.name));
-    S.pan.sel = new Set(S.pan.detect.filter(d => d.p >= 0.25).map(d => d.name));
+    if (S.rec.state === 'unknown') await checkRecognizer();
+    const clip = S.rec.state === 'ready' ? await recognizer() : null;
+    const res = await packScan(ph.orig || ph.blob, {clip, local:localMatches, debug: !!window.__mlDebug, onStep:(t, f) => {
+      S.pan.stepText = t; S.pan.frac = f; const tx = $('#pan-step'), bar = $('#pan-bar'); if (tx) tx.textContent = t; if (bar) bar.style.width = Math.round(f * 100) + '%'; }});
+    if (S.pan.photo !== ph) return;
+    res.items = res.items.filter(it => !S.pantry.some(x => it.matches[0] && x.key === 'off' + it.matches[0].product.code));
+    res.items.forEach(it => { it.id = 'p' + it.id; });
+    S.pan.pk = res;
+    S.pan.pkSel = new Set(res.items.filter(it => it.conf !== 'maybe' || it.via === 'barcode').map(it => it.id));
+    if (clip) {
+      S.pan.stepText = 'Looking for fresh food…'; const tx = $('#pan-step'); if (tx) tx.textContent = S.pan.stepText;
+      const found = await clip.classifyMany(ph.blob, () => {});
+      const ROLE = Object.fromEntries(PANTRY.map(x => [x[0], x[3]]));
+      S.pan.detect = found.filter(d => ['fruit','veg','protein'].includes(ROLE[d.name]) && !/package|can|bag|box|jar|carton|tub/i.test(PANTRY.find(x => x[0] === d.name)?.[1] || '') && !S.pantry.some(x => x.name === d.name)).slice(0, 8);
+      S.pan.sel = new Set(S.pan.detect.filter(d => d.p >= 0.3).map(d => d.name));
+    }
   } catch (e) { console.error(e); toast('Couldn’t read that photo. Try again or add foods by name.'); }
-  finally { S.pan.busy = false; renderPantry(); }
+  finally { if (S.pan.photo === ph) { S.pan.busy = false; renderPantry(); } }
 }
 let panT = 0;
 function runPanSearch(){
@@ -918,7 +1010,12 @@ document.addEventListener('click', e => {
     case 'mode': S.mode = b.dataset.mode; renderScan(); if (S.mode === 'type') setTimeout(() => $('#search-in').focus(), 50); break;
     case 'take-photo': $('#in-cam').click(); break;
     case 'pick-photo': $('#in-gal').click(); break;
-    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; renderPhoto(); break;
+    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.pk.res = null; S.pk.busy = false; renderPhoto(); break;
+    case 'pk-add': {
+      const it = (S.pk.res?.items || []).find(x => x.id === b.dataset.id); if (!it || S.pk.added.has(it.id)) break;
+      b.disabled = true;
+      pickedFood(it, false).then(food => { if (!food) { toast('That product has no nutrition data. Pick another match.'); b.disabled = false; return; } S.pk.added.add(it.id); addToPlate([food]); renderPhoto(); });
+      break; }
     case 'rec-download': downloadRecognizer(); break;
     case 'guess-add': {
       const lab = b.dataset.label; if (S.rec.added.has(lab)) break;
@@ -965,6 +1062,12 @@ document.addEventListener('click', e => {
     case 'wk-cover': S.wk.report = false; renderWeek(); break;
     case 'pan-take': $('#in-pcam').click(); break;
     case 'pan-pick': $('#in-pgal').click(); break;
+    case 'pan-add-pk': {
+      const its = (S.pan.pk?.items || []).filter(it => S.pan.pkSel.has(it.id));
+      b.disabled = true; b.textContent = 'Adding…';
+      (async () => { let n = 0; for (const it of its){ const food = await pickedFood(it, true); if (food && addPantry(food)) n++; }
+        S.pan.pk = null; S.pan.pkSel = new Set(); renderPantry(); toast(n ? `Added ${n} product${n === 1 ? '' : 's'} to your pantry` : 'Nothing new to add'); })();
+      break; }
     case 'pan-add-detected': {
       let n = 0; for (const d of S.pan.detect || []) { if (!S.pan.sel.has(d.name)) continue; const P = PANTRY.find(x => x[0] === d.name); if (P && addPantry(pantryFood(P[2], P[0], P[3]))) n++; }
       S.pan.detect = null; S.pan.sel = new Set(); renderPantry(); toast(`Added ${n} item${n === 1 ? '' : 's'} to your pantry`); break; }
@@ -1009,6 +1112,8 @@ document.addEventListener('change', e => {
   } else if (['b-act','b-goal','b-sport','b-days'].includes(t.id)) { readForm(); S.dirty = true; renderBody(); }
   else if (t.id === 'set-wrapped') { settings().wrapped = t.checked; saveProfile(); renderToday(); toast(t.checked ? 'Weekly recap plays as Wrapped stories' : 'Weekly recap shows as a simple report'); }
   else if (t.dataset.det) { const n = t.dataset.det; t.checked ? S.pan.sel.add(n) : S.pan.sel.delete(n); renderDetect(); }
+  else if (t.dataset.pkAlt) { S.pk.choice[t.dataset.pkAlt] = t.value; if (t.dataset.mode === 'pantry') { if (t.value === 'none') S.pan.pkSel.delete(t.dataset.pkAlt); else S.pan.pkSel.add(t.dataset.pkAlt); renderDetect(); } else { S.pk.added.delete(t.dataset.pkAlt); renderPhoto(); } }
+  else if (t.dataset.pk) { t.checked ? S.pan.pkSel.add(t.dataset.pk) : S.pan.pkSel.delete(t.dataset.pk); renderDetect(); }
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'bc-code') { e.preventDefault(); lookupBarcode(e.target.value); } });
 $('#in-cam').addEventListener('change', e => { setPhoto(e.target.files[0]); e.target.value = ''; });
@@ -1033,6 +1138,9 @@ async function boot(){
   syncOnline();
   const [db] = await Promise.all([fetch('data/foods.json').then(r => r.json()), loadAll()]);
   DB = db; INDEX = buildIndex(db); BYID = new Map(db.foods.map(f => [f[0], f]));
+  const vw = new Set(); const addW = n => String(n).toLowerCase().replace(/[^a-z]+/g, ' ').split(' ').forEach(w => w.length >= 3 && vw.add(w));
+  db.foods.forEach(f => addW(f[1])); LABELS.forEach(l => addW(l[0])); PANTRY.forEach(x => addW(x[0]));
+  setVocab([...vw]);
   fillBodyForm();
   const h = (location.hash || '').slice(1);
   $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
@@ -1041,4 +1149,4 @@ async function boot(){
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Macro Lens couldn’t load its food data. Reload the page.</p>'; });
-window.__ml = {S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
+window.__ml = {packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};

@@ -429,3 +429,20 @@ html.wr-open,html.wr-open body{overflow:hidden}
 .methods{list-style:none;margin:0;padding:0;font-size:13.5px}
 .methods li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line)}
 .methods li:first-child{border-top:0}
+
+/* ---------- packaged-food matches ---------- */
+.pks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.pk{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px}
+.card .pk{border-color:var(--line);background:var(--surface)}
+.pk.added{border-color:var(--accent)}
+.pk-thumbs{display:flex;flex-direction:column;gap:6px}
+.pk-thumbs img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:var(--surface-2);display:block}
+.pk-thumbs img + img{object-fit:contain;background:#fff}
+.pk-main{display:flex;flex-direction:column;gap:3px;min-width:0}
+.pk-main b{font-weight:650;line-height:1.25}
+.pk-main small{color:var(--muted);font-size:12.5px;line-height:1.3}
+.pk-read{font-style:italic;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pk .alt{margin-top:4px;font-size:13px;padding:7px 30px 7px 9px}
+.pk-check{width:22px;height:22px;accent-color:var(--accent);margin-top:4px}
+.conf{font-style:normal;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--carbs)}
+.conf.sure{color:var(--good)} .conf.maybe{color:var(--muted)}

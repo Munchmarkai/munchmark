@@ -13,11 +13,18 @@ const BODY_PROMPTS = {
   male: ['a very lean muscular man with a clearly visible six-pack and veins', 'a lean fit man with visible abs', 'an athletic man with a flat stomach and faint abs', 'a man with an average build and a slightly soft stomach', 'a man with a soft belly and love handles', 'an overweight man with a round belly', 'an obese man with a large belly'],
   female: ['a very lean muscular woman with visible abs', 'a fit athletic woman with toned arms and a flat stomach', 'a woman with a slim build and a soft flat stomach', 'a woman with an average build and soft curves', 'a woman with a rounder stomach and fuller hips', 'an overweight woman with a round stomach', 'an obese woman with a large stomach'],
 };
+// package shapes, matched against Open Food Facts packaging data
+const PACK_PROMPTS = [
+  ['box', 'a cardboard box of food'], ['can', 'a metal can of food'], ['jar', 'a glass jar of food'], ['bottle', 'a plastic or glass bottle'],
+  ['bag', 'a plastic bag or pouch of food'], ['carton', 'a paper carton of milk or juice'], ['tub', 'a plastic tub or cup of food'],
+  ['wrap', 'a plastic-wrapped tray of meat or cheese'], ['produce', 'loose fresh fruit or vegetables'],
+];
 const SETS = {
   body_male: {labels: BODY_PROMPTS.male, prompt: l => `a photo of ${l}.`},
   body_female: {labels: BODY_PROMPTS.female, prompt: l => `a photo of ${l}.`},
   food: {labels: LABELS.filter(l => l[3] !== false).map(l => l[0]), prompt: l => `a photo of ${l}, a type of food.`},
   pantry: {labels: PANTRY.map(p => p[1]), names: PANTRY.map(p => p[0]), prompt: l => `a photo of ${l}.`},
+  pack: {labels: PACK_PROMPTS.map(x => x[1]), names: PACK_PROMPTS.map(x => x[0]), prompt: l => `a photo of ${l}.`},
 };
 const keyOf = s => `clip-text-v1:${s}:${SETS[s].labels.length}:${SETS[s].labels.join('|').length}`;
 
@@ -145,3 +152,14 @@ export async function classifyBody(blob, sex){
   const set = sex === 'female' ? 'body_female' : 'body_male';
   return Array.from(scores(await embedImage(blob), set));
 }
+
+// one package crop: its shape and what kind of food it looks like
+export async function classifyCrop(blob){
+  await load();
+  const v = await embedImage(blob);
+  const sh = scores(v, 'pack'), pa = scores(v, 'pantry');
+  let si = 0; for (let i = 1; i < sh.length; i++) if (sh[i] > sh[si]) si = i;
+  let pi = 0; for (let i = 1; i < pa.length; i++) if (pa[i] > pa[pi]) pi = i;
+  return {shape: sh[si] >= 0.3 ? SETS.pack.names[si] : null, shapeP: sh[si], role: pa[pi] >= 0.2 ? PANTRY[pi][3] : null, food: SETS.pantry.names[pi], foodP: pa[pi]};
+}
+export function isReady(){ return !!vision; }

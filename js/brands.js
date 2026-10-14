@@ -1,0 +1,68 @@
+// Grocery brands commonly found in US stores (national brands, store brands, Midwest chains).
+// Used to spot the brand in text read off a package and to snap OCR mistakes to real words.
+export const BRANDS = [
+  // cereal, breakfast, baking
+  "General Mills","Cheerios","Wheaties","Chex","Kix","Trix","Lucky Charms","Cinnamon Toast Crunch","Cocoa Puffs","Golden Grahams","Reese's Puffs","Fiber One","Nature Valley",
+  "Kellogg's","Kelloggs","Frosted Flakes","Froot Loops","Rice Krispies","Special K","Raisin Bran","Apple Jacks","Corn Pops","Frosted Mini-Wheats","Mini-Wheats","Pop-Tarts","Eggo","Nutri-Grain","Kashi","Bear Naked","WK Kellogg",
+  "Post","Honey Bunches of Oats","Fruity Pebbles","Cocoa Pebbles","Grape-Nuts","Honeycomb","Great Grains","Malt-O-Meal","Quaker","Cap'n Crunch","Life","Chewy","Oatmeal Squares",
+  "Bob's Red Mill","Nature's Path","Barbara's","Cascadian Farm","Magic Spoon","Catalina Crunch","Kodiak","Kodiak Cakes","Krusteaz","Aunt Jemima","Pearl Milling Company","Mrs. Butterworth's","Log Cabin","Bisquick","Pillsbury","Betty Crocker","Duncan Hines","Ghirardelli","Jiffy","Gold Medal","King Arthur","Domino","C&H","Arm & Hammer","Clabber Girl","McCormick","Morton",
+  // bread, tortillas
+  "Nature's Own","Dave's Killer Bread","Sara Lee","Wonder","Pepperidge Farm","Arnold","Oroweat","Brownberry","Thomas'","Thomas","Bimbo","Mission","Guerrero","La Banderita","Old El Paso","Ortega","Taco Bell","King's Hawaiian","Martin's","Ozery","Little Northern Bakehouse","Canyon Bakehouse","Schmidt",
+  // pasta, rice, grains, sauces
+  "Barilla","Ronzoni","Mueller's","San Giorgio","De Cecco","Banza","Kraft","Velveeta","Annie's","Kraft Mac & Cheese","Ragu","Prego","Rao's","Hunt's","Classico","Bertolli","Newman's Own","Contadina","Del Monte","Muir Glen","Cento","Hunt's",
+  "Ben's Original","Uncle Ben's","Minute","Minute Rice","Mahatma","Carolina","Zatarain's","Knorr","Rice-A-Roni","Pasta Roni","Near East","Success","Lundberg","Seeds of Change","Goya","La Costeña","Pace","Tostitos","Herdez","Old El Paso","Frank's RedHot","Tabasco","Cholula","Sriracha","Huy Fong","Heinz","French's","Hellmann's","Best Foods","Duke's","Miracle Whip","Kraft","Hidden Valley","Ken's","Wish-Bone","Marzetti","Sweet Baby Ray's","Kraft","Stubb's","KC Masterpiece","Bull's-Eye","A.1.","Lea & Perrins","Kikkoman","La Choy","Kraft","Grey Poupon","Vlasic","Claussen","Mt. Olive","B&G",
+  // canned & soups
+  "Campbell's","Progresso","Chunky","Healthy Request","Pacific Foods","Swanson","College Inn","Kitchen Basics","Better Than Bouillon","Wolfgang Puck","Bush's","Bush's Best","Van Camp's","Ranch Style","Kuner's","Green Giant","Libby's","Dole","Del Monte","Hormel","Hormel Chili","Wolf Brand","Dinty Moore","Spam","Chef Boyardee","Armour","Vienna","Libby's","Underwood","StarKist","Bumble Bee","Chicken of the Sea","Wild Planet","Safe Catch","Kirkland",
+  // nut butters, spreads, snacks
+  "Jif","Skippy","Peter Pan","Smucker's","Smuckers","Justin's","Teddie","Nutella","Welch's","Bonne Maman","Polaner","Planters","Blue Diamond","Wonderful","Wonderful Pistachios","Emerald","Fisher","Sahale","David","Kar's","Diamond",
+  "Lay's","Doritos","Cheetos","Fritos","Ruffles","Tostitos","SunChips","Sun Chips","Funyuns","Smartfood","Rold Gold","Baked Lay's","Pringles","Cape Cod","Kettle Brand","Utz","Wise","Herr's","Zapp's","Popchips","Late July","Siete","Takis","Goldfish","Cheez-It","Cheez It","Ritz","Triscuit","Wheat Thins","Club","Townhouse","Keebler","Nabisco","Oreo","Chips Ahoy!","Chips Ahoy","Nutter Butter","Nilla","Teddy Grahams","Honey Maid","belVita","Lance","Austin","Pepperidge Farm","Milano","Famous Amos","Little Debbie","Hostess","Entenmann's","Tastykake","Mrs. Freshley's",
+  "Clif","Clif Bar","Kind","KIND","RXBAR","Larabar","Quest","Pure Protein","ONE","Built","Barebells","Atkins","think!","Kirkland Signature","Power Crunch","Nature Valley","Quaker Chewy","Special K","Fiber One","Belvita","Annie's","MadeGood","Skinny Pop","SkinnyPop","Orville Redenbacher's","Pop Secret","Act II","Angie's","Boom Chicka Pop","Smartfood","Snyder's","Snyder's of Hanover","Rold Gold","Combos","Chex Mix","Gardetto's","Bugles","Sabra","Cedar's","Hope","Boar's Head",
+  // candy, sweets, ice cream
+  "Hershey's","Reese's","Kit Kat","Kit-Kat","M&M's","Snickers","Twix","Milky Way","3 Musketeers","Skittles","Starburst","Sour Patch Kids","Swedish Fish","Haribo","Trolli","Nerds","Jolly Rancher","Twizzlers","Lindt","Dove","Ghirardelli","Tootsie","Butterfinger","Crunch","Baby Ruth","Hi-Chew","Ben & Jerry's","Häagen-Dazs","Haagen-Dazs","Breyers","Blue Bell","Tillamook","Halo Top","Talenti","Edy's","Dreyer's","Turkey Hill","Prairie Farms","Hiland","Kemps","Good Humor","Klondike","Popsicle","Drumstick","Outshine",
+  // dairy, eggs, plant milk
+  "Fairlife","Horizon","Horizon Organic","Organic Valley","Lactaid","Darigold","Dean's","Borden","Prairie Farms","Hiland","Anderson Erickson","Silk","Almond Breeze","Blue Diamond","Oatly","Planet Oat","Califia","Califia Farms","Ripple","So Delicious","Elmhurst","Chobani","Oikos","Dannon","Activia","Light + Fit","Yoplait","Go-Gurt","Siggi's","Fage","Stonyfield","Noosa","Two Good","Ratio","Icelandic Provisions","Brown Cow","Daisy","Breakstone's","Knudsen","Hood","Philadelphia","Kraft","Sargento","Tillamook","Cabot","Land O Lakes","Land O'Lakes","Kerrygold","Challenge","Country Crock","I Can't Believe It's Not Butter","Coffee-mate","Coffee mate","International Delight","Silk","Reddi-wip","Cool Whip","Frigo","BelGioioso","Galbani","Polly-O","Babybel","Laughing Cow","Boursin","Président","Vital Farms","Eggland's Best","Pete and Gerry's","Happy Egg","Egg Beaters",
+  // meat, seafood, deli, frozen
+  "Tyson","Perdue","Foster Farms","Pilgrim's","Sanderson Farms","Just Bare","Bell & Evans","Smithfield","Hormel","Oscar Mayer","Hillshire Farm","Ball Park","Nathan's","Hebrew National","Johnsonville","Jimmy Dean","Bob Evans","Bar-S","Eckrich","Butterball","Jennie-O","Land O'Frost","Buddig","Applegate","Boar's Head","Dietz & Watson","Sugardale","Wright","Hormel Black Label","Farmland","Kretschmer","Gwaltney","Old Wisconsin","Jack Link's","Slim Jim","Chomps","Gorton's","Van de Kamp's","SeaPak","Trident","Mrs. Paul's",
+  "DiGiorno","Red Baron","Tombstone","Totino's","Jack's","Home Run Inn","Newman's Own","Freschetta","California Pizza Kitchen","Stouffer's","Lean Cuisine","Healthy Choice","Marie Callender's","Banquet","Hungry-Man","Swanson","Hot Pockets","Lean Pockets","El Monterey","Amy's","Evol","Smart Ones","Devour","Birds Eye","Green Giant","Ore-Ida","Alexia","McCain","Mrs. T's","White Castle","Bagel Bites","Pizza Rolls","Eggo","Van's","Kodiak","Jimmy Dean","Gardein","Morningstar Farms","MorningStar Farms","Beyond Meat","Impossible","Boca","Quorn","Tofurky","Nasoya","House Foods",
+  // produce brands
+  "Dole","Chiquita","Del Monte","Fresh Express","Taylor Farms","Earthbound Farm","Organic Girl","Little Leaf","Driscoll's","Naturipe","Wonderful Halos","Cuties","Sunkist","Grimmway","Bolthouse Farms","Mann's","Green Giant","Ready Pac","Marketside","Simply Fresh",
+  // drinks
+  "Coca-Cola","Coke","Diet Coke","Coke Zero","Pepsi","Diet Pepsi","Pepsi Zero Sugar","Dr Pepper","Dr. Pepper","Mountain Dew","Sprite","Fanta","7UP","Sierra Mist","Starry","A&W","Barq's","Mug","Sunkist","Canada Dry","Schweppes","Squirt","Crush","Big Red","Gatorade","Powerade","BodyArmor","Body Armor","Prime","Propel","Vitaminwater","Smartwater","Dasani","Aquafina","Fiji","Evian","Poland Spring","Deer Park","Ozarka","Pure Life","Nestle","LaCroix","Bubly","Spindrift","Polar","Waterloo","Red Bull","Monster","Celsius","Bang","Reign","Rockstar","C4","Alani Nu","Ghost","5-hour Energy","Starbucks","Dunkin'","Folgers","Maxwell House","Café Bustelo","Cafe Bustelo","Community Coffee","Peet's","Eight O'Clock","Death Wish","Nescafé","Lipton","Bigelow","Celestial Seasonings","Twinings","Luzianne","Arizona","AriZona","Pure Leaf","Gold Peak","Snapple","Brisk","Tropicana","Minute Maid","Simply","Simply Orange","Florida's Natural","Ocean Spray","Welch's","Mott's","Juicy Juice","Capri Sun","Kool-Aid","Hawaiian Punch","SunnyD","Sunny D","V8","Naked","Bolthouse","Odwalla","Kevita","GT's","Health-Ade","Premier Protein","Muscle Milk","Core Power","Orgain","Ensure","Boost","Optimum Nutrition","Gold Standard","Dymatize","Isopure","Muscletech","Body Fortress","Six Star","Owyn","Vega","Garden of Life","Ghost","Transparent Labs","Liquid I.V.","Nesquik","Hershey's","Carnation","Ovaltine","Swiss Miss",
+  // store brands
+  "Great Value","Sam's Choice","Member's Mark","Marketside","Equate","Kroger","Simple Truth","Simple Truth Organic","Private Selection","Kroger Brand","Heritage Farm","Big K","Good & Gather","Market Pantry","Favorite Day","Kirkland Signature","Kirkland","365","365 by Whole Foods Market","Whole Foods","Trader Joe's","Hy-Vee","Hy-Vee Select","Hy-Vee One Step","Best Choice","Always Save","Clearly Organic","Food Club","Shurfine","Western Family","Essential Everyday","Our Family","Schnucks","Dierbergs","Price Chopper","Aldi","Clancy's","Millville","Simply Nature","Happy Farms","Friendly Farms","Specially Selected","Season's Choice","Fit & Active","Elevation","Baker's Corner","Stonemill","Carlini","Casa Mamita","Chef's Cupboard","Dakota's Pride","Burman's","Tuscan Garden","L'oven Fresh","Southern Grove","Brookdale","Appleton Farms","Kirkwood","Park Street Deli","Little Salad Bar","Barissimo","Benton's","Millville","Sundae Shoppe","Never Any!","Wild Harvest","Signature Select","O Organics","Lucerne","Open Nature","H-E-B","Hill Country Fare","Central Market","Publix","GreenWise","Wegmans","Meijer","Frederik's","Harris Teeter","Food Lion","Hannaford","Giant","Stop & Shop","Nature's Promise","Great Value Organic","Walmart","Target","Costco","Dollar General","Clover Valley","Family Dollar","Smart Sense",
+];
+
+// Lowercased, punctuation-free brand phrases, longest first, for matching against OCR words.
+export const BRAND_PHRASES = [...new Set(BRANDS.map(b => b.toLowerCase().replace(/[’']/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean))]
+  .map(p => p.split(' ')).sort((a, b) => b.join(' ').length - a.join(' ').length);
+
+// Words printed on almost every package that say nothing about what the product is.
+export const JUNK = new Set(('net wt wt oz lb lbs kg ml fl floz ct count pk pack per serving servings size calories calorie cal kcal nutrition facts ingredients ingredient contains contain ' +
+  'made with and the of a an in on for by to from our your you new improved now more less than be is it its this that at as or no not only all every each ' +
+  'daily value dv amount total best by use date exp sell keep refrigerate refrigerated frozen keep after opening store cool dry place shake well ' +
+  'distributed manufactured product products company co inc llc usa us u s a www com net org visit call questions comments recipe recipes ' +
+  'kosher ok gmo non verified project certified usda inspected passed department agriculture est grade guaranteed quality since family owned brand trademark registered tm r ' +
+  'great taste delicious tasty yummy perfect simply easy quick ready minute minutes microwave oven stove instructions directions cook cooking prepare preparation heat serve ' +
+  'g mg mcg x pc pcs bag box can jar bottle carton container pouch tub lid open here tear peel recycle please recyclable plastic paper cardboard ' +
+  'excellent good source of vitamins minerals nutrients rich packed loaded natural naturally flavored artificially artificial flavors flavor colors colored preservatives added ' +
+  'value size family size share pack bonus free %').split(' '));
+
+// Map Open Food Facts category tags to the app's pantry roles.
+export function roleFromCategories(tags = [], name = ''){
+  const t = (Array.isArray(tags) ? tags : String(tags).split(',')).map(s => String(s).toLowerCase()).join(' ');
+  const n = String(name).toLowerCase();
+  const has = re => re.test(t) || re.test(n);
+  if (has(/protein[- ]powder|whey|protein[- ]shake|protein[- ]drink/)) return 'protein';
+  if (has(/greek[- ]yogurt|skyr|cottage[- ]cheese/)) return 'protein';
+  if (has(/yogurt|yoghurt/)) return 'dairy';
+  if (has(/\bmilks?\b|plant[- ]based[- ]milk|almond[- ]milk|oat[- ]milk|soy[- ]milk/) && !has(/chocolate[- ]bar|candy|candies/)) return 'dairy';
+  if (has(/frozen[- ]pizza|pizzas|ready[- ]meals|meals|soups?|chili|prepared[- ]dishes|pasta[- ]dishes|macaroni[- ](and|&)[- ]cheese|mac[- ](and|&|n)[- ]cheese|instant[- ]noodles|ramen|burritos|nuggets/)) return 'meal';
+  if (has(/chips|crisps|crackers|cookies|biscuits|candies|candy|chocolates?|confectioner|sweet[- ]snacks|salty[- ]snacks|popcorn|pretzels|snack[- ]bars|cereal[- ]bars|desserts|ice[- ]creams?|sodas?|carbonated|soft[- ]drinks|energy[- ]drinks|sweetened[- ]beverages/)) return 'snack';
+  if (has(/cheese|cheeses/)) return 'fat';
+  if (has(/meat|poultry|chicken|beef|pork|turkey|sausage|bacon|ham\b|jerky|fish|seafood|tuna|salmon|shrimp|eggs?\b|tofu|tempeh/)) return 'protein';
+  if (has(/peanut[- ]butter|nut[- ]butters|spreads|nuts|seeds|almonds|walnuts|pecans|pistachios|cashews|oils?\b|butter\b|avocado|hummus|mayonnaise|dressing/)) return 'fat';
+  if (has(/fruits?\b|berries|apples?|bananas?|oranges?|grapes?|raisins|dried[- ]fruits|fruit[- ]juices?|juices?\b/)) return 'fruit';
+  if (has(/vegetables?|tomato|beans?[- ]green|green[- ]beans|corn\b|peas\b|spinach|broccoli|salads?\b|sauces?\b|salsa|pasta[- ]sauces?/)) return 'veg';
+  if (has(/cereals?|breakfast|oats?|oatmeal|granola|breads?|bagels?|tortillas?|rice|pasta|noodles|grains?|quinoa|flours?|potato|beans?|legumes|lentils|chickpeas|waffles|pancakes/)) return 'carb';
+  return null;
+}
