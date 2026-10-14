@@ -61,7 +61,7 @@ export function splitMeal(text){
 }
 
 // grams for "qty unit" against a USDA food row (cols: ... s1g s1d s2g s2d at the end)
-function gramsFromMeasure(f, unit){
+export function gramsFromMeasure(f, unit){
   const n = f.length, opts = [[f[n-4], f[n-3]], [f[n-2], f[n-1]]].filter(o => o[0] && o[1]);
   const u = SINGULAR(unit);
   for (const [g, d] of opts){

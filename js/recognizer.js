@@ -2,6 +2,7 @@
 // The model (Xenova/clip-vit-base-patch32, quantized) downloads once from Hugging Face,
 // then runs fully on the phone and works offline.
 import { LABELS, PANTRY } from './labels.js';
+import { CHAINS } from './restaurants.js';
 
 const MODEL = 'Xenova/clip-vit-base-patch32';
 // body-fat photo check: one prompt per level, lean to high
@@ -19,12 +20,16 @@ const PACK_PROMPTS = [
   ['bag', 'a plastic bag or pouch of food'], ['carton', 'a paper carton of milk or juice'], ['tub', 'a plastic tub or cup of food'],
   ['wrap', 'a plastic-wrapped tray of meat or cheese'], ['produce', 'loose fresh fruit or vegetables'],
 ];
+// restaurant packaging, plus things that are not restaurant packaging
+const CHAIN_PROMPTS = [...CHAINS.filter(c => c.clip).map(c => [c.key, c.clip]),
+  [null, 'homemade food on a plate'], [null, 'a packaged grocery store product'], [null, 'food on a plate at a sit-down restaurant'], [null, 'a plain takeout container with no logo'], [null, 'a person or a room']];
 const SETS = {
   body_male: {labels: BODY_PROMPTS.male, prompt: l => `a photo of ${l}.`},
   body_female: {labels: BODY_PROMPTS.female, prompt: l => `a photo of ${l}.`},
   food: {labels: LABELS.filter(l => l[3] !== false).map(l => l[0]), prompt: l => `a photo of ${l}, a type of food.`},
   pantry: {labels: PANTRY.map(p => p[1]), names: PANTRY.map(p => p[0]), prompt: l => `a photo of ${l}.`},
   pack: {labels: PACK_PROMPTS.map(x => x[1]), names: PACK_PROMPTS.map(x => x[0]), prompt: l => `a photo of ${l}.`},
+  chains: {labels: CHAIN_PROMPTS.map(x => x[1]), names: CHAIN_PROMPTS.map(x => x[0]), prompt: l => `a photo of ${l}.`},
 };
 const keyOf = s => `clip-text-v1:${s}:${SETS[s].labels.length}:${SETS[s].labels.join('|').length}`;
 
@@ -163,6 +168,14 @@ export async function classifyCrop(blob){
   return {shape: sh[si] >= 0.3 ? SETS.pack.names[si] : null, shapeP: sh[si], role: pa[pi] >= 0.2 ? PANTRY[pi][3] : null, food: SETS.pantry.names[pi], foodP: pa[pi]};
 }
 export function isReady(){ return !!vision; }
+
+// which restaurant's packaging is in the photo, if any: {key, p} (key null = not restaurant packaging)
+export async function classifyChain(blob){
+  await load();
+  const s = scores(await embedImage(blob), 'chains');
+  let i = 0; for (let k = 1; k < s.length; k++) if (s[k] > s[i]) i = k;
+  return {key: SETS.chains.names[i], p: s[i]};
+}
 
 // Image fingerprints for matching your own things (bottles, containers): the whole photo and its center.
 // Two photos of the same object score close to 1; different objects score lower.

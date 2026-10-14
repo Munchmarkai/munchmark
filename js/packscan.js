@@ -177,7 +177,19 @@ function cluster(words){
 
 /* ---------- query building ---------- */
 // single brand words that are also everyday words: only trust them as a brand when printed big
-const AMBIGUOUS = new Set('life post kind one simply club crunch chewy minute success carolina wonder crush prime boost core ghost built reign mission giant target polar naked ripple hope david emerald diamond wise lance austin think simple truth original best value select chef sun nature natural fresh family market essential always food clover smart open signature lucerne bold balance boom dove trolli nerds take five ritz club whole our more free organic premium premier thomas kemps hood daisy silk ensure vital happy egg big red crisp mug'.split(' '));
+export const AMBIGUOUS = new Set('life post kind one simply club crunch chewy minute success carolina wonder crush prime boost core ghost built reign mission giant target polar naked ripple hope david emerald diamond wise lance austin think simple truth original best value select chef sun nature natural fresh family market essential always food clover smart open signature lucerne bold balance boom dove trolli nerds take five ritz club whole our more free organic premium premier thomas kemps hood daisy silk ensure vital happy egg big red crisp mug'.split(' '));
+// a grocery brand named in typed text ("barebells salty peanut"), ignoring brand names that are everyday words
+export function brandOf(text){
+  const seq = tok(text || '');
+  for (const phrase of BRAND_PHRASES){
+    if (phrase.length === 1 && (phrase[0].length < 4 || AMBIGUOUS.has(phrase[0]))) continue;
+    for (let i = 0; i + phrase.length <= seq.length; i++){
+      let ok = true; for (let k = 0; k < phrase.length; k++) if (seq[i + k] !== phrase[k]) { ok = false; break; }
+      if (ok) return phrase.join(' ');
+    }
+  }
+  return null;
+}
 function brandIn(seq, heights, maxH){
   for (const phrase of BRAND_PHRASES){
     for (let i = 0; i + phrase.length <= seq.length; i++){
@@ -240,6 +252,25 @@ function rank(desc, list, hints){
 }
 const confOf = s => s >= 0.78 ? 'sure' : s >= 0.55 ? 'likely' : 'maybe';
 
+// words the person typed about the photo ("barebells salty peanut") count like big, readable label text
+function hintDesc(hint){
+  const seq = tok(hint || '').filter(t => t.length >= 2 && !JUNK.has(t) && !/^\d/.test(t));
+  if (!seq.length) return null;
+  const brand = brandIn(seq, seq.map(() => 1), 1);
+  const inB = i => !!(brand && i >= brand.at && i < brand.at + brand.len);
+  return {seq, brand: brand ? brand.phrase : '', brandWeak: !!(brand && brand.weak), weighted: seq.map((t, i) => ({t, w: 1.25, brand: inB(i), order: 100 + i, hint: true}))};
+}
+function withHint(it, h){
+  const seen = new Set(it.weighted.map(x => x.t));
+  it.weighted = it.weighted.concat(h.weighted.filter(x => !seen.has(x.t)));
+  it.seq = it.seq.concat(h.seq.filter(t => !it.seq.includes(t)));
+  if (!it.brand && h.brand) { it.brand = h.brand; it.brandWeak = h.brandWeak; }
+  const brandToks = it.brand ? it.brand.split(' ') : [];
+  const prod = h.seq.filter(t => !brandToks.includes(t));
+  it.query = [...new Set([...brandToks, ...prod, ...String(it.query || '').split(' ')])].filter(Boolean).slice(0, 8).join(' ');
+  it.hinted = true;
+}
+
 /* ---------- main ---------- */
 // ctx: {clip: recognizer module (optional, only if downloaded), local(query) -> [{name, ndb, kcal}], onStep(text, frac), single: bool}
 export async function scan(blob, ctx = {}){
@@ -263,9 +294,9 @@ export async function scan(blob, ctx = {}){
     } catch {}
   }
 
-  // 2. OCR (straight, then sideways if little text was found)
+  // 2. OCR (straight, then light-on-dark and sideways if little text was found)
   step('Reading the labels…', 0.08);
-  let words = [];
+  let words = []; const rawWords = [];
   try {
     progressCb = m => { if (m.status === 'recognizing text') step('Reading the labels…', 0.08 + 0.42 * (m.progress || 0)); else if (/loading|initializ/.test(m.status)) step('Getting the text reader ready…', 0.06); };
     const w = await ocr();
@@ -273,22 +304,45 @@ export async function scan(blob, ctx = {}){
     // reads best with one or the other (adaptive Otsu vs. Sauvola)
     const passes = [[1300, '1', 0.08, 0.3], [1000, '2', 0.3, 0.5]];
     let good = [];
+    const keepRaw = ws => { for (const x of ws) if (x.conf >= 45 && /[a-z]/i.test(x.raw)) rawWords.push(x.raw); };
     for (const [size, th, f0, f1] of passes){
       progressCb = m => { if (m.status === 'recognizing text') step('Reading the labels…', f0 + (f1 - f0) * (m.progress || 0)); else if (/loading|initializ/.test(m.status)) step('Getting the text reader ready…', 0.06); };
       const {cv, scale} = canvasOf(src, size);
       const {data} = await w.recognize(cv, {thresholding_method: th}, {blocks: true, text: false});
       const ws = wordsFrom(data, 0).map(x => ({...x, x0: x.x0 / scale, y0: x.y0 / scale, x1: x.x1 / scale, y1: x.y1 / scale, h: x.h / scale}));
       if (ctx.debug) (ctx.debugPasses ||= []).push(ws.map(x => x.raw + ':' + Math.round(x.conf)).join(' '));
+      keepRaw(ws);
       good = mergeWords(good, cleanWords(ws));
     }
-    if (good.length < 6 && !ctx.single) {
+    // light text on a dark wrapper (protein bars, chip bags): read the negative
+    if (good.length < 5) {
+      step('Reading light-on-dark text…', 0.5);
+      const {cv, scale} = canvasOf(src, 1100);
+      const {data} = await w.recognize(inverted(cv), {thresholding_method: '1'}, {blocks: true, text: false});
+      const ws = wordsFrom(data, 0).map(x => ({...x, x0: x.x0 / scale, y0: x.y0 / scale, x1: x.x1 / scale, y1: x.y1 / scale, h: x.h / scale}));
+      keepRaw(ws);
+      good = mergeWords(good, cleanWords(ws));
+    }
+    if (good.length < (ctx.single ? 3 : 6)) {
+      const rotWords = (rot, th, inv) => {
+        const r = canvasOf(src, 1800, rot);
+        return w.recognize(inv ? inverted(r.cv) : r.cv, {thresholding_method: th}, {blocks: true, text: false})
+          .then(({data}) => wordsFrom(data, rot, r.cv.width, r.cv.height).map(x => ({...x, x0: x.x0 / r.scale, y0: x.y0 / r.scale, x1: x.x1 / r.scale, y1: x.y1 / r.scale, h: x.h / r.scale})));
+      };
+      let bestRot = 0, bestN = 0;
       for (const rot of [90, 270]){
         step('Reading sideways labels…', 0.5);
-        const r = canvasOf(src, 1800, rot);
-        const {data: d2} = await w.recognize(r.cv, {thresholding_method: '1'}, {blocks: true, text: false});
-        const ws = wordsFrom(d2, rot, r.cv.width, r.cv.height).map(x => ({...x, x0: x.x0 / r.scale, y0: x.y0 / r.scale, x1: x.x1 / r.scale, y1: x.y1 / r.scale, h: x.h / r.scale}));
+        const ws = await rotWords(rot, '1', false);
         const cw = cleanWords(ws).filter(x => x.conf >= 60);
+        keepRaw(ws.filter(x => x.conf >= 60));
+        if (cw.length > bestN) { bestN = cw.length; bestRot = rot; }
         if (cw.length > good.length / 2) good = mergeWords(good, cw);
+      }
+      // one product held sideways: read that direction again with the other binarization and as a negative
+      if (ctx.single && bestRot) for (const [th, inv] of [['2', false], ['1', true]]){
+        const ws = await rotWords(bestRot, th, inv);
+        keepRaw(ws.filter(x => x.conf >= 55));
+        good = mergeWords(good, cleanWords(ws).filter(x => x.conf >= 55));
       }
     }
     words = good;
@@ -321,16 +375,27 @@ export async function scan(blob, ctx = {}){
   raw = raw.filter((_, i) => !merged.has(i));
   let groups = raw.map(describe).filter(d => d.letters >= 4 && (d.known >= 1 || d.brand));
   groups.sort((a, b) => (b.maxH * b.letters) - (a.maxH * a.letters));
-  if (ctx.single) groups = groups.slice(0, 2); else groups = groups.slice(0, 10);
+  // one product in the photo: a second text group only counts if it names a brand or more than one word ("20g PROTEIN" doesn't)
+  if (ctx.single) groups = groups.slice(0, 2).filter((g, i) => i === 0 || g.brand || g.query.split(' ').filter(w => w.length >= 3).length >= 2); else groups = groups.slice(0, 10);
   for (const [i, g] of groups.entries()){
     const cr = cropBlob(src, g.box, 1, 448, g.maxH);
     items.push({id: 't' + i, via: 'text', ...g, thumb: cr.thumb, cropP: cr.blobP, matches: [], best: 0, conf: 'maybe'});
+  }
+  const hint = ctx.single ? hintDesc(ctx.hint) : null;
+  if (hint) {
+    const first = items.find(x => x.via === 'text');
+    if (first) withHint(first, hint);
+    else if (!items.some(x => x.via === 'barcode')) {
+      const cr = cropBlob(src, [0, 0, src.width, src.height], 1, 448, 0);
+      const it = {id: 'h0', via: 'hint', seq: [], weighted: [], query: '', brand: '', read: String(ctx.hint).slice(0, 90), letters: 0, maxH: 1, box: [0, 0, src.width, src.height], thumb: cr.thumb, cropP: cr.blobP, matches: [], best: 0, conf: 'maybe'};
+      withHint(it, hint); items.push(it);
+    }
   }
 
   // 4. shape & category from the image model (optional)
   if (ctx.clip) {
     step('Checking package shapes…', 0.55);
-    for (const it of items.filter(x => x.via === 'text')){
+    for (const it of items.filter(x => x.via === 'text' || x.via === 'hint')){
       try { const b = await it.cropP; const r = await ctx.clip.classifyCrop(b); it.shape = r.shape; it.shapeP = r.shapeP; it.role = r.role; } catch {}
     }
   }
@@ -356,8 +421,14 @@ export async function scan(blob, ctx = {}){
         if (!offline) try { const more = await searchProducts(shorter); list = list.concat(more.filter(m => !list.some(x => x.code === m.code))); } catch { netErr = true; offline = true; }
       }
     }
-    const ranked = rank(it, list, {shape: it.shape, role: it.role}).filter(r => r.score > 0.25).slice(0, 6);
+    const ranked = rank(it, list, {shape: it.shape, role: it.role}).filter(r => r.score > 0.25).slice(0, it.brand ? 10 : 6);
     if (ranked.length) { it.matches = ranked; it.conf = confOf(ranked[0].score); }
+    // the brand is clear but the flavor or variety isn't: ask instead of guessing
+    if (ranked.length > 1 && it.brand && ranked[0].score - ranked[1].score < 0.02) {
+      const seen = new Set(it.seq || []);
+      const unread = tok(ranked[0].product.name).filter(t => t.length >= 3 && !JUNK.has(t) && !seen.has(t) && !(it.brand || '').split(' ').includes(t));
+      if (unread.length) { it.ambiguous = true; it.conf = 'maybe'; }
+    }
     if (ctx.local && (!ranked.length || ranked[0].score < 0.55)) {
       it.local = ctx.local(it.query).slice(0, 4);
       if (!ranked.length && it.local.length) it.conf = 'maybe';
@@ -371,17 +442,33 @@ export async function scan(blob, ctx = {}){
   const final = [];
   for (const it of items){
     const c = it.matches[0]?.product.code;
-    if (it.via === 'text' && c && codes.has(c)) continue;
+    if (it.via !== 'barcode' && c && codes.has(c)) continue;
     if (c) codes.add(c);
-    if (!it.matches.length && !(it.local && it.local.length) && it.via === 'text') continue;
+    if (!it.matches.length && !(it.local && it.local.length) && it.via !== 'barcode') continue;
     delete it.cropP; final.push(it);
   }
   step('Done', 1);
   if (src.close) src.close();
-  return {debug: ctx.debug ? {passes: ctx.debugPasses, kept: words.map(w => w.t).join(' ')} : undefined, items: final, words: words.length, offline: offline || (netErr && !final.some(x => x.matches.length))};
+  return {debug: ctx.debug ? {passes: ctx.debugPasses, kept: words.map(w => w.t).join(' ')} : undefined, items: final, words: words.length, text: rawWords.join(' '), offline: offline || (netErr && !final.some(x => x.matches.length))};
 }
 
 export async function fetchDetails(code){ return getProduct(code); }
+
+// every word with its position (menus): straight and as a negative for light-on-dark boards
+export async function readWords(blob, onStep = () => {}){
+  const src = await bitmap(blob), w = await ocr();
+  let all = [];
+  try {
+    for (const [i, inv] of [false, true].entries()){
+      onStep(i ? 'Reading light-on-dark text…' : 'Reading the menu…');
+      const {cv, scale} = canvasOf(src, 1700);
+      const {data} = await w.recognize(inv ? inverted(cv) : cv, {thresholding_method: '1'}, {blocks: true, text: false});
+      const ws = wordsFrom(data, 0).map(x => ({text: x.raw, conf: x.conf, x0: x.x0 / scale, y0: x.y0 / scale, x1: x.x1 / scale, y1: x.y1 / scale, h: x.h / scale, known: false}));
+      all = mergeWords(all, ws);
+    }
+  } finally { releaseSoon(); if (src.close) src.close(); }
+  return all;
+}
 export function preloadOCR(){ ocr().then(releaseSoon).catch(() => {}); }
 
 /* ---------- reading a kitchen-scale display ---------- */
@@ -475,7 +562,7 @@ export async function readScale(blob, onStep = () => {}, region = null){
 }
 
 // Read a block of printed text (a recipe card, an ingredient list on paper or a screen) as lines in reading order.
-export async function readText(blob, onStep = () => {}){
+export async function readText(blob, onStep = () => {}, {psm = '4'} = {}){
   const src = await bitmap(blob);
   const w = await ocr();
   const lines = (data) => {
@@ -490,7 +577,7 @@ export async function readText(blob, onStep = () => {}){
   };
   let best = [];
   try {
-    await w.setParameters({tessedit_pageseg_mode: '4'});            // one column of text, lines of different sizes
+    await w.setParameters({tessedit_pageseg_mode: psm});            // 4: one column, lines of different sizes; 3: menus with columns
     for (const [i, [size, method]] of [[1700, '1'], [1300, '2']].entries()){
       onStep(i ? 'Reading the list again…' : 'Reading the list…');
       const {cv} = canvasOf(src, size);

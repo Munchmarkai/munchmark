@@ -182,10 +182,20 @@ export const LABELS = [
   ['crushed tomatoes', [[11693, 794]], '1 can (28 oz)', false],
   ['tomato paste', [[11546, 16]], '1 tbsp', false],
   ['corn kernels', [[11178, 136]], '1 cup', false],
+  ['bbq sauce', [[6150, 34]], '2 tbsp', false],
+  ['mustard', [[2046, 5]], '1 tsp', false],
+  ['hot sauce', [[6631, 6.5]], '1 tsp', false],
+  ['sour cream', [[1056, 24]], '2 tbsp', false],
+  ['blue cheese dressing', [[4539, 30]], '2 tbsp', false],
+  ['caesar dressing', [[43015, 29]], '2 tbsp', false],
+  ['italian dressing', [[4114, 29]], '2 tbsp', false],
+  ['cheese sauce', [[6930, 63]], '1/4 cup', false],
+  ['honey mustard', [[4686, 30]], '2 tbsp', false],
 ];
 
 // Extra words people type that mean the same label.
 export const ALIASES = {
+  'ranch': 'ranch dressing', 'mayo': 'mayonnaise', 'catsup': 'ketchup', 'barbecue sauce': 'bbq sauce', 'bbq': 'bbq sauce', 'sriracha': 'hot sauce', 'buffalo sauce': 'hot sauce', 'blue cheese': 'blue cheese dressing', 'queso': 'cheese sauce',
   'eggs': 'scrambled eggs', 'omelet': 'omelette', 'pancake': 'pancakes', 'waffle': 'waffles',
   'sausage': 'breakfast sausage', 'oats': 'oatmeal', 'cereal': 'cereal with milk', 'doughnut': 'donut',
   'burger': 'hamburger', 'pizza': 'cheese pizza', 'fries': 'french fries', 'nuggets': 'chicken nuggets',

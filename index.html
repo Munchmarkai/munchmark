@@ -90,6 +90,12 @@
         <button type="button" class="btn primary" data-action="take-photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Take photo</button>
         <button type="button" class="btn ghost" data-action="pick-photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/></svg>From gallery</button>
       </div>
+      <div class="field">
+        <label for="photo-desc">Add details <span class="hint">optional · works with or without a photo</span></label>
+        <textarea id="photo-desc" rows="2" placeholder="6 oz · with ranch · Barebells salty peanut · large fries from McDonald's · Chobani yogurt 170 g (pantry)"></textarea>
+        <button type="button" class="btn ghost" data-action="desc-apply">Use details</button>
+      </div>
+      <div id="desc-out"></div>
       <input type="file" id="in-cam" accept="image/*" capture="environment" class="vh" tabindex="-1">
       <input type="file" id="in-gal" accept="image/*" class="vh" tabindex="-1">
       <div id="rec-status"></div>
@@ -119,10 +125,17 @@
     <div class="sec" id="mode-type" hidden>
       <div class="field">
         <label for="type-in">What did you eat?</label>
-        <textarea id="type-in" placeholder="e.g. 2 eggs, 2 slices toast, 1 tbsp butter&#10;6 oz chicken breast with 1 cup rice"></textarea>
+        <textarea id="type-in" placeholder="e.g. 2 eggs, 2 slices toast, 1 tbsp butter&#10;6 oz chicken breast with 1 cup rice&#10;Barebells cookies and cream bar · big mac and large fries from McDonald's&#10;Greek yogurt 170 g (pantry)"></textarea>
         <button type="button" class="btn primary" data-action="type-add">Add to plate</button>
         <p class="err" id="type-msg" hidden></p>
+        <p class="fine">Name a brand to look it up online. Add <b>(pantry)</b> after a food to use the exact item in your pantry.</p>
       </div>
+      <div class="field">
+        <span class="lbl">Have the nutrition label?</span>
+        <div class="row2"><button type="button" class="btn ghost" data-action="lbl-scan" data-cam="1">Scan nutrition label</button><button type="button" class="btn ghost" data-action="lbl-scan">From a screenshot</button></div>
+        <p class="fine">Reads the Nutrition Facts on a package, or a screenshot of a website’s nutrition info, and saves it to My foods.</p>
+      </div>
+      <div id="type-extra"></div>
       <div class="field">
         <label for="search-in">Or search 8,400 foods</label>
         <input type="text" id="search-in" autocomplete="off" placeholder="chicken thigh, big mac, oat milk…">
@@ -163,6 +176,7 @@
   <section class="view" id="view-meals" aria-label="Saved meals" hidden>
     <div class="seg modes" role="tablist" aria-label="Meals">
       <button type="button" role="tab" data-action="tab" data-tab="meals" aria-selected="true">My meals</button>
+      <button type="button" role="tab" data-action="tab" data-tab="eatout" aria-selected="false">Eat out</button>
       <button type="button" role="tab" data-action="tab" data-tab="containers" aria-selected="false">Containers</button>
       <button type="button" role="tab" data-action="tab" data-tab="pantry" aria-selected="false">Pantry</button>
     </div>
@@ -179,6 +193,7 @@
   <section class="view" id="view-pantry" aria-label="Pantry and meal ideas" hidden>
     <div class="seg modes" role="tablist" aria-label="Meals">
       <button type="button" role="tab" data-action="tab" data-tab="meals" aria-selected="false">My meals</button>
+      <button type="button" role="tab" data-action="tab" data-tab="eatout" aria-selected="false">Eat out</button>
       <button type="button" role="tab" data-action="tab" data-tab="containers" aria-selected="false">Containers</button>
       <button type="button" role="tab" data-action="tab" data-tab="pantry" aria-selected="true">Pantry</button>
     </div>
@@ -333,6 +348,9 @@
     </div>
     <div class="sec">
       <h2 class="h">Settings</h2>
+      <div class="field"><label for="set-fdc">USDA FoodData Central key <span class="hint">optional, for online label search</span></label>
+        <input type="text" id="set-fdc" autocomplete="off" spellcheck="false" placeholder="Empty uses the shared DEMO_KEY">
+        <p class="fine">Free and instant at <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">fdc.nal.usda.gov/api-key-signup</a>. The shared key allows about 30 searches an hour; your own key allows 1,000. It stays on this phone.</p></div>
       <label class="switch" for="set-wrapped"><span><b>Wrapped-style weekly recap</b><small>Your week as full-screen stories. Off shows the same recap as a simple report.</small></span><input type="checkbox" id="set-wrapped" role="switch"></label>
     </div>
     <div class="sec">
@@ -344,7 +362,7 @@
       </div>
       <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
       <p class="fine" id="rec-about"></p>
-      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode data: Open Food Facts, available under the Open Database License. Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode and brand data: Open Food Facts (Open Database License) and USDA FoodData Central (public domain). Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
     </div>
   </section>
 </div>

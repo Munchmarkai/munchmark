@@ -3,6 +3,13 @@
 A free calorie and nutrition tracker that runs entirely on your phone. No account, no API key, no subscription.
 
 - **Photo:** packaged foods are identified from the label: the app finds barcodes in the photo, reads the printed words on the phone (Tesseract OCR), groups them by package, checks each package's shape, and matches brand + product name against the Open Food Facts grocery database. Meals without a label use an on-device food recognizer (OpenAI CLIP via Transformers.js).
+- **Photo + details:** add a description on top of any photo ("6 oz", "with ranch", "salty peanut", "large fries from McDonald's"). Amounts change the portion, flavors and brand words steer the label search, extra foods are added, and it also works with no photo.
+- **Brands:** the label reader tries sideways and light-on-dark text, and when it can read the brand but not the flavor it asks you to pick instead of guessing.
+- **Restaurants:** McDonald's, Burger King, Wendy's, Taco Bell, KFC, Popeyes, Subway, Chick-fil-A, the big pizza chains and several sit-down chains are recognized from printed words on the packaging (or the image model, if downloaded) and their USDA-analyzed menu items are offered, ranked for the photo. Other chains get typical dishes for that kind of restaurant.
+- **Eat out (Meals tab):** type a restaurant or snap its menu board (chains print calories) and get picks sized to what's left of your calories and protein today: best fits, most protein for the calories, and lighter options.
+- **Online search:** Type mode searches Open Food Facts and USDA FoodData Central branded labels (free; add your own api.data.gov key in Body → Settings for more than ~30 searches an hour), plus a link to search the web.
+- **Nutrition label scan:** read the Nutrition Facts on a package, or a screenshot of a website's nutrition info, check the numbers and save it to My foods.
+- **Pantry tag:** write "(pantry)" after a food anywhere you type (Type, photo details, recipe lists) to use the exact item from your pantry, e.g. `Chobani yogurt 200 g (pantry)`.
 - **Barcode:** scan packaged food for nutrition from Open Food Facts.
 - **Type:** write meals like `2 eggs, 2 slices toast, 1 tbsp butter` or search 8,400 USDA foods.
 - Tracks calories, protein, carbs, fat, fiber, sugar, saturated fat, cholesterol, sodium, potassium, calcium, iron, magnesium, zinc and vitamins A, C, D, B12 and folate.
@@ -27,6 +34,8 @@ Open the site in Chrome, tap the ⋮ menu, then **Add to home screen → Install
 - Recognizer: [Xenova/clip-vit-base-patch32](https://huggingface.co/Xenova/clip-vit-base-patch32), downloaded once from Hugging Face on first use.
 - Runtime: [Transformers.js](https://github.com/huggingface/transformers.js) 3.8.1 (Apache-2.0), bundled in `vendor/`.
 - Label reading: [Tesseract.js](https://github.com/naptha/tesseract.js) 7.0.0 with the English LSTM model (Apache-2.0), bundled in `vendor/tesseract/`.
+- Branded labels and typical dishes online: [USDA FoodData Central](https://fdc.nal.usda.gov) (CC0, public domain).
+- Restaurant items: USDA's analyses of chain restaurant food in SR28 (2010s); chains change recipes, so treat them as close estimates.
 - Scale displays: the seven-segment model `ssd_int` from [tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) (Apache-2.0), bundled in `vendor/tesseract/`.
 - Product search: Open Food Facts [Search-a-licious](https://search.openfoodfacts.org) API, falling back to the classic search API; requests are rate-limited and cached on the phone.
 

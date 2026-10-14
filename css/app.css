@@ -573,3 +573,14 @@ details.help p{margin-top:8px}
 .wwfc{margin:0;font-size:13.5px;background:var(--surface-2);border-radius:12px;padding:10px 12px}
 .wwfc .pill{margin-left:4px}
 .cilist .btn{white-space:nowrap;flex:none}
+
+/* ---------- photo details, restaurants, labels ---------- */
+.restpick{align-items:center}
+.restpick select{font-size:14px;padding:8px 30px 8px 10px}
+em.old{font-style:normal;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-left:4px}
+.guess select.alt{margin-top:4px;font-size:13px;padding:6px 28px 6px 8px;max-width:100%}
+.idea .hi{color:var(--warn);font-weight:650}
+.lblgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (min-width:420px){.lblgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.lblcard .field label{font-size:12.5px}
+#view-meals .seg.modes button,#view-pantry .seg.modes button{font-size:13px;padding:0 4px}

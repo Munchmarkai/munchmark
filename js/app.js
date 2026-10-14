@@ -3,13 +3,16 @@ import { LABELS, PANTRY } from './labels.js';
 import { mealIdeas, dayPlan, scaleT, roleOf } from './planner.js';
 import { summarize, weekStart, addDays, SPORTS } from './week.js';
 import { playWrapped } from './wrapped.js';
-import { parseMeal, labelByName, parseIngredients } from './parse.js';
+import { parseMeal, labelByName, parseIngredients, parseSegment, splitMeal, gramsFromMeasure } from './parse.js';
 import * as store from './store.js';
 import { offP100, getProduct, displayName } from './off.js';
-import { scan as packScan, setVocab, readScale, readText } from './packscan.js';
+import { scan as packScan, setVocab, readScale, readText, readWords, brandOf } from './packscan.js';
 import { roleFromCategories } from './brands.js';
 import { parseDiet, applyDiet } from './diet.js';
 import { waterGoal, estimate, bloatLabel, COMPONENT_LABEL } from './water.js';
+import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, detectChain, chainByName, kindFromName, rankMenu, portionsOf, nutOf, suggest, parseMenuText, parseMenuWords, estimateMenuItem, stripChainName } from './restaurants.js';
+import { searchOnline, webSearchURL } from './online.js';
+import { parseLabel, labelToP100 } from './label.js';
 import { WEIGH_POINTS, QUESTIONS, URINE, sportDefaults, hrMax, zoneOf, summarizeHR, connectHR, dayMetrics, feelScore, weekStats, replicate, COMPARE_ROWS } from './sports.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -75,6 +78,9 @@ const S = {
   wb:{photo:null, busy:false, matches:null, pick:null, frac:1, err:'', scaleOz:null},
   sp:{view:'day', date:dayKey(), setup:false, ci:{}, cmpA:null, cmpB:null, importMsg:''},
   hr:{conn:null, name:'', bpm:0, rec:false, samples:[], err:''},
+  desc:{text:'', applied:null, online:null}, rest:{chain:null, src:'', ask:null, manual:null, no:false, filter:''},
+  eo:{q:'', chain:null, kind:null, menu:null, busy:false, step:'', err:'', tKcal:'', tP:''},
+  myFoods:[], online:{q:'', busy:false, items:null, errors:[]}, lbl:null,
 };
 let DB = null, INDEX = null, BYID = null, R = null;
 
@@ -139,6 +145,7 @@ async function loadAll(){
   S.pantry = Array.isArray(all.pantry) ? all.pantry : [];
   S.recipes = Array.isArray(all.recipes) ? all.recipes : [];
   S.containers = Array.isArray(all.containers) ? all.containers : [];
+  S.myFoods = Array.isArray(all.myfoods) ? all.myfoods : [];
   S.days = {};
   for (const [k, v] of Object.entries(all)) if (k.startsWith('day-') && v && v.date) S.days[v.date] = v;
 }
@@ -319,14 +326,17 @@ function renderPhoto(){
   if (p && pk.busy) html = `<div class="recbox"><span><span class="spin"></span> <b id="pk-step">${esc(pk.step || 'Reading the label…')}</b></span></div>` + html;
   $('#rec-status').innerHTML = html;
   const pkItems = p && !pk.busy && pk.res ? pk.res.items.slice(0, 3) : [];
+  const rHTML = restHTML();
+  const dEl = $('#desc-out'); if (dEl) dEl.innerHTML = descOutHTML();
   const pkHTML = pkItems.length ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
-  if (!r.results || r.busy) { $('#rec-results').innerHTML = pkHTML + recNote; return; }
+  const restLink = S.photo && !S.rest.chain && !S.rest.ask && !S.rest.open ? '<p class="fine"><button type="button" class="linkbtn" data-action="rest-open">From a restaurant? Pick it for its menu</button></p>' : '';
+  if (!r.results || r.busy) { $('#rec-results').innerHTML = rHTML + pkHTML + recNote + (p && !pk.busy ? restLink : ''); return; }
   const unsure = r.results[0].p < 0.3;
-  $('#rec-results').innerHTML = pkHTML + `<div class="sec"><div class="sec-head"><h2 class="h">${unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
+  $('#rec-results').innerHTML = rHTML + pkHTML + `<div class="sec"><div class="sec-head"><h2 class="h">${unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
     ${pkItems.length ? '<p class="fine">Not packaged? These are the closest dishes.</p>' : unsure ? '<p class="fine">Not sure about this one. Pick the closest match, or type it in.</p>' : ''}
     <ul class="guesses">${r.results.map(g => { const L = labelByName(g.label); const on = r.added.has(g.label);
       return `<li class="guess ${on ? 'added' : ''}"><span><b>${esc(cap(g.label))}</b><small>${esc(L[2])} · ${int(labelKcal(L))} kcal</small><span class="pct"><i style="width:${Math.max(3, Math.round(g.p * 100))}%"></i></span></span>
-        <button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="guess-add" data-label="${esc(g.label)}">${on ? 'Added' : 'Add'}</button></li>`; }).join('')}</ul></div>`;
+        <button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="guess-add" data-label="${esc(g.label)}">${on ? 'Added' : 'Add'}</button></li>`; }).join('')}</ul>${S.desc.applied?.portion ? `<p class="fine">Adding uses your portion: “${esc(S.desc.applied.portion)}”.</p>` : ''}</div>` + restLink;
 }
 // one editable food row (amount, unit, closer-match picker); used by the plate and the meal builder
 function itemRowHTML(it){
@@ -417,7 +427,7 @@ async function classifyPhoto(){
   } catch (e) {
     console.error(e);
     S.rec.state = 'error'; S.rec.error = 'Recognition failed on this photo. Try again, or type the food instead.';
-  } finally { S.rec.busy = false; renderPhoto(); if (S.rec.results) $('#rec-results').scrollIntoView({behavior: reduced() ? 'auto' : 'smooth', block:'nearest'}); }
+  } finally { S.rec.busy = false; renderPhoto(); updateRestaurant(); if (S.rec.results) $('#rec-results').scrollIntoView({behavior: reduced() ? 'auto' : 'smooth', block:'nearest'}); }
 }
 async function decodeImg(file){
   if (window.createImageBitmap) { try { return await createImageBitmap(file, {imageOrientation:'from-image'}); } catch {} }
@@ -443,6 +453,7 @@ async function setPhoto(file){
     const p = await prepPhoto(file);
     if (S.photo) URL.revokeObjectURL(S.photo.url);
     S.photo = p; S.rec.results = null; S.rec.added = new Set();
+    S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''};
     renderPhoto();
     runPackaged();
     if (S.rec.state === 'ready') classifyPhoto();
@@ -523,7 +534,7 @@ function pkPicked(it){
   if (c[0] === 'l') return {kind:'usda', food: it.local[Number(c.slice(1))]};
   return {kind:'none'};
 }
-const CONF_TXT = {sure:'Strong match', likely:'Likely match', maybe:'Best guess'};
+const CONF_TXT = {sure:'Strong match', likely:'Likely match', maybe:'Best guess · check the flavor or size'};
 function pkCard(it, mode){
   const pick = pkPicked(it), p = pick.product, f = pick.food;
   let title = 'No match picked', meta = '', img = '';
@@ -538,7 +549,8 @@ function pkCard(it, mode){
     <span class="pk-thumbs"><img src="${esc(it.thumb)}" alt="From your photo">${img ? `<img src="${esc(img)}" alt="Database photo" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>
     <span class="pk-main"><small class="pk-read">${it.via === 'barcode' ? 'Barcode' : 'Read'}: “${esc(it.via === 'barcode' ? it.code : it.read)}”${esc(shape)}</small>
       <b>${esc(title)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}
-      ${p || f ? `<em class="conf ${esc(it.conf)}">${CONF_TXT[it.conf] || ''}</em>` : ''}
+      ${p || f ? `<em class="conf ${esc(it.conf)}">${it.ambiguous ? 'Brand found · pick the flavor or variety below' : CONF_TXT[it.conf] || ''}</em>` : ''}
+      ${it.ambiguous ? '<small class="fine">Or type the flavor in Add details and tap Use details.</small>' : ''}
       ${opts.length > 1 ? `<select class="alt" data-pk-alt="${esc(it.id)}" data-mode="${mode}" aria-label="Choose the right product">${opts.map(([v, t]) => `<option value="${v}" ${v === c ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>` : ''}
     </span>
     ${mode === 'pantry' ? `<input type="checkbox" class="pk-check" data-pk="${esc(it.id)}" ${on ? 'checked' : ''} ${pick.kind === 'none' ? 'disabled' : ''} aria-label="Add ${esc(title)}">`
@@ -566,34 +578,53 @@ async function runPackaged(){
   renderPhoto();
   try {
     const clip = S.rec.state === 'ready' ? await recognizer() : null;
-    const res = await packScan(ph.orig || ph.blob, {single:true, clip, local:localMatches, onStep:(t, f) => { S.pk.step = t; S.pk.frac = f; const el = $('#pk-step'); if (el) el.textContent = t; }});
+    const res = await packScan(ph.orig || ph.blob, {single:true, clip, local:localMatches, hint:S.desc.applied?.hint || '', onStep:(t, f) => { S.pk.step = t; S.pk.frac = f; const el = $('#pk-step'); if (el) el.textContent = t; }});
     if (S.photo !== ph) return;
-    res.items = res.items.filter(it => it.matches.length && it.conf !== 'maybe' || it.via === 'barcode');
+    // a weak match is still worth showing when a brand was read or typed; the flavor can be fixed from the list
+    res.items = res.items.filter(it => it.via === 'barcode' || (it.matches.length && (it.conf !== 'maybe' || it.brand || it.hinted)));
     S.pk.res = res;
   } catch (e) { console.error(e); S.pk.res = {items:[], error:true}; }
-  finally { if (S.photo === ph) { S.pk.busy = false; renderPhoto(); } }
+  finally { if (S.photo === ph) { S.pk.busy = false; renderPhoto(); updateRestaurant(); } }
 }
 
 /* ---------- typing & search ---------- */
-function typeAdd(){
-  const text = $('#type-in').value.trim(); const msg = $('#type-msg');
+async function typeAdd(){
+  const text = $('#type-in').value.trim(), msg = $('#type-msg');
   if (!text) { $('#type-in').focus(); return; }
-  const parsed = parseMeal(text, INDEX, BYID);
-  const items = [], missing = [];
-  for (const r of parsed){
-    if (r.missing) { missing.push(r.text); continue; }
-    const single = r.items.length === 1;
-    for (const i of r.items){
-      const it = usdaItem(i.ndb, i.g, single ? (r.label ? cap(r.label) : shortName(r.name)) : null, single ? r.portion : `${dec(i.g)} g`);
-      if (!it) continue;
-      if (r.label) it.label = r.label;
-      if (!single) it.group = r.label || r.name;
-      items.push(it);
+  const items = [], missing = [], online = [];
+  for (const chunk of text.split(/[;\n,]+/).map(x => x.trim()).filter(Boolean)){
+    const pt = pantryTagged(chunk);
+    if (pt != null) { const it = pantryItemFor(pt); if (it) items.push(it); else missing.push(`${pt} (not in your pantry)`); continue; }
+    const chainHere = detectChain(chunk);
+    if (!chainHere) { const mineAll = myFoodFor(chunk); if (mineAll) { items.push(mineAll); continue; } }
+    if (!chainHere && brandOf(chunk)) { if (navigator.onLine) { online.push(chunk); continue; } }
+    for (const seg of splitMeal(chunk)){
+      if (chainHere) { const ci = chainItemFor(seg, chainHere, true); if (ci) { items.push(ci); continue; } if (!nameWords(stripChainName(seg, chainHere)).length) continue; }
+      const mine = myFoodFor(seg); if (mine) { items.push(mine); continue; }
+      const r = parseSegment(seg, INDEX, BYID);
+      if (!r) continue;
+      if (r.missing) { missing.push(r.text); continue; }
+      items.push(...itemsFromParsed(r));
     }
   }
-  msg.hidden = !missing.length; msg.textContent = missing.length ? `Couldn’t find: ${missing.join(', ')}. Try the search below.` : '';
+  const show = () => { msg.hidden = !missing.length; msg.className = 'err'; msg.textContent = missing.length ? `Couldn’t find: ${missing.join(', ')}. Try the search below, or search online.` : ''; };
+  show();
   if (items.length) { addToPlate(items); $('#type-in').value = ''; }
+  for (const seg of online){
+    msg.hidden = false; msg.className = 'notice'; msg.textContent = `Looking up “${seg}” online…`;
+    try {
+      const {q, items:res} = await lookupOnline(seg);
+      const top = res[0];
+      if (top && top.score >= 0.8) { const it = onlinePlateItem(top, seg); addToPlate([it]); rememberOnline(top); $('#type-in').value = ''; }
+      else { S.online = {q, busy:false, items:res, errors:[], seg}; renderTypeExtra(); missing.push(`${seg} (pick the right one below)`); }
+    } catch {
+      const r = parseSegment(seg, INDEX, BYID);
+      if (r && !r.missing) addToPlate(itemsFromParsed(r)); else missing.push(seg);
+    }
+  }
+  show();
 }
+function rememberOnline(r){ addMyFood({name:r.name, brand:r.brand, servingG:r.servingG || 100, servingD:r.servingD || '100 g', p:r.p, src:'custom', from:r.src}); }
 let searchT = 0;
 function runSearch(){
   const q = $('#search-in').value.trim(), out = $('#search-results');
@@ -601,9 +632,11 @@ function runSearch(){
   const qt = tokens(q);
   const labs = LABELS.filter(l => { const lt = tokens(l[0]); return qt.every(t => lt.some(w => w.startsWith(t))); }).slice(0, 4);
   const usda = search(INDEX, q, 12);
-  out.innerHTML = labs.map(l => `<li><button type="button" data-action="add-label" data-label="${esc(l[0])}"><span><b><span class="tag">Quick</span>${esc(cap(l[0]))}</b><small>${esc(l[2])}</small></span><span class="k tnum">${int(labelKcal(l))} kcal</span></button></li>`).join('') +
+  const mine = S.myFoods.filter(f => qt.every(t => tokens(`${f.brand || ''} ${f.name}`).some(w => w.startsWith(t)))).slice(0, 5);
+  out.innerHTML = mine.map(f => `<li><button type="button" data-action="add-my" data-id="${esc(f.id)}"><span><b><span class="tag">Mine</span>${esc(f.brand ? f.brand + ' ' : '')}${esc(f.name)}</b><small>${esc(f.servingD || '100 g')}</small></span><span class="k tnum">${int(f.p[0] * (f.servingG || 100) / 100)} kcal</span></button></li>`).join('') + labs.map(l => `<li><button type="button" data-action="add-label" data-label="${esc(l[0])}"><span><b><span class="tag">Quick</span>${esc(cap(l[0]))}</b><small>${esc(l[2])}</small></span><span class="k tnum">${int(labelKcal(l))} kcal</span></button></li>`).join('') +
     usda.map(f => { const n = f.length, sg = f[n-4], sd = f[n-3]; const g = sg || 100; return `<li><button type="button" data-action="add-usda" data-ndb="${f[0]}"><span><b>${esc(shortName(f[1]))}</b><small>${esc(sd ? tidy(sd) : '100 g')} · ${esc(f[1])}</small></span><span class="k tnum">${int(num(f[3]) * g / 100)} kcal</span></button></li>`; }).join('') ||
     `<li><p class="fine" style="padding:10px 0">No matches. Try fewer or simpler words, like “chicken thigh”.</p></li>`;
+  out.innerHTML += `<li><button type="button" data-action="online-search"><span><b><span class="tag">Online</span>Search store brands &amp; labels for “${esc(q)}”</b><small>Open Food Facts and USDA FoodData Central</small></span><span class="k">›</span></button></li>`;
 }
 
 /* ---------- body ---------- */
@@ -616,7 +649,7 @@ function fillBodyForm(){
   $('#b-neck').value = d.neck; $('#b-waist').value = d.waist; $('#b-hip').value = d.hip;
   $('#b-sport').value = d.sport; $('#b-days').value = String(d.trainingDays || 0);
   $('#set-wrapped').checked = wrappedOn();
-  $('#set-creatine').checked = !!p.creatine; $('#b-cycle').value = p.cycleStart || ''; $('#b-cyclelen').value = p.cycleLength || '';
+  $('#set-creatine').checked = !!p.creatine; const fk = $('#set-fdc'); if (fk) fk.value = (p.settings || {}).fdcKey || ''; $('#b-cycle').value = p.cycleStart || ''; $('#b-cyclelen').value = p.cycleLength || '';
   syncSex();
 }
 function syncSex(){ $$('[data-action="sex"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sex === S.draft.sex))); $('#hip-field').hidden = S.draft.sex === 'male'; $('#cycle-fields').hidden = S.draft.sex !== 'female'; }
@@ -755,7 +788,7 @@ function saveBodyFat(){
 
 /* ---------- backup ---------- */
 function exportBackup(){
-  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:S.profile, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers});
+  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:S.profile, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
   a.download = `macro-lens-backup-${dayKey()}.json`;
@@ -773,6 +806,7 @@ async function importBackup(file){
     if (Array.isArray(j.pantry)) { S.pantry = j.pantry; savePantry(); }
     if (Array.isArray(j.recipes)) { S.recipes = j.recipes; saveRecipes(); }
     if (Array.isArray(j.containers)) { S.containers = j.containers; saveContainers(); }
+    if (Array.isArray(j.myFoods)) { S.myFoods = j.myFoods; saveMyFoods(); }
     renderToday(); renderBody(); toast(`Restored ${n} day${n === 1 ? '' : 's'} of data`);
   } catch { toast('That file isn’t a Macro Lens backup.'); }
 }
@@ -963,7 +997,7 @@ async function scanPantry(file){
     res.items = res.items.filter(it => !S.pantry.some(x => it.matches[0] && x.key === 'off' + it.matches[0].product.code));
     res.items.forEach(it => { it.id = 'p' + it.id; });
     S.pan.pk = res;
-    S.pan.pkSel = new Set(res.items.filter(it => it.conf !== 'maybe' || it.via === 'barcode').map(it => it.id));
+    S.pan.pkSel = new Set(res.items.filter(it => it.conf !== 'maybe' || it.via === 'barcode' || it.ambiguous || (res.offline && (it.local || []).length)).map(it => it.id));
     if (clip) {
       S.pan.stepText = 'Looking for fresh food…'; const tx = $('#pan-step'); if (tx) tx.textContent = S.pan.stepText;
       const found = await clip.classifyMany(ph.blob, () => {});
@@ -981,7 +1015,8 @@ function runPanSearch(){
   const qt = tokens(q);
   const quick = PANTRY.filter(p => { const lt = tokens(p[0]); return qt.every(t => lt.some(w => w.startsWith(t))); }).slice(0, 5);
   const usda = search(INDEX, q, 8).filter(f => !quick.some(p => p[2] === f[0]));
-  out.innerHTML = quick.map(p => `<li><button type="button" data-action="pan-add" data-ndb="${p[2]}" data-name="${esc(p[0])}" data-role="${p[3]}"><span><b><span class="tag">Quick</span>${esc(p[0])}</b><small>${esc(ROLE_LABEL[p[3]] || '')}</small></span><span class="k">Add</span></button></li>`).join('') +
+  const mine = S.myFoods.filter(f => qt.every(t => tokens(`${f.brand || ''} ${f.name}`).some(w => w.startsWith(t)))).slice(0, 4);
+  out.innerHTML = mine.map(f => `<li><button type="button" data-action="pan-add-my" data-id="${esc(f.id)}"><span><b><span class="tag">Mine</span>${esc(f.brand ? f.brand + ' ' : '')}${esc(f.name)}</b><small>${esc(f.servingD || '')}</small></span><span class="k">Add</span></button></li>`).join('') + quick.map(p => `<li><button type="button" data-action="pan-add" data-ndb="${p[2]}" data-name="${esc(p[0])}" data-role="${p[3]}"><span><b><span class="tag">Quick</span>${esc(p[0])}</b><small>${esc(ROLE_LABEL[p[3]] || '')}</small></span><span class="k">Add</span></button></li>`).join('') +
     usda.map(f => `<li><button type="button" data-action="pan-add" data-ndb="${f[0]}"><span><b>${esc(shortName(f[1]))}</b><small>${esc(f[1])}</small></span><span class="k">Add</span></button></li>`).join('') ||
     `<li><p class="fine" style="padding:10px 0">No matches. Try a simpler word.</p></li>`;
 }
@@ -1294,6 +1329,7 @@ function renderMeals(){
   const el = $('#meals-body'); if (!el) return;
   $$('#view-meals .seg [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
   if (S.tab === 'containers') return renderContainers(el);
+  if (S.tab === 'eatout') return renderEatOut(el);
   if (S.ml.log) return renderPortion(el);
   if (S.ml.edit) return renderRecipeEdit(el);
   const list = S.recipes.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
@@ -1352,8 +1388,16 @@ function renderRecipeTotals(){
 }
 function addRecipeText(text, fromPhoto){
   const e = S.ml.edit; if (!e) return;
-  const res = parseIngredients(text, INDEX, BYID);
   let added = 0; const missing = [], skipped = [];
+  const lines = String(text).split('\n'), rest = [];
+  for (const line of lines){
+    const pt = pantryTagged(line.trim());
+    if (pt != null) { const it = pantryItemFor(pt.replace(/^[^A-Za-z0-9½¼¾]+/, '')); if (it) { it.line = line.trim(); e.items.push(it); added++; } else missing.push(`${pt} (not in your pantry)`); continue; }
+    const mine = line.trim() && myFoodFor(line.trim());
+    if (mine) { mine.line = line.trim(); e.items.push(mine); added++; continue; }
+    rest.push(line);
+  }
+  const res = parseIngredients(rest.join('\n'), INDEX, BYID);
   for (const r of res){
     if (r.skip) { skipped.push(r.text); continue; }
     if (r.water != null) { e.water.push({id:uid(), g:r.water, text:r.text}); added++; continue; }
@@ -1408,7 +1452,8 @@ function runRSearch(){
   const qt = tokens(q);
   const labs = LABELS.filter(l => l[1].length === 1 && tokens(l[0]).length && qt.every(t => tokens(l[0]).some(w => w.startsWith(t)))).slice(0, 3);
   const usda = search(INDEX, q, 8);
-  out.innerHTML = labs.map(l => `<li><button type="button" data-action="r-add-label" data-label="${esc(l[0])}"><span><b><span class="tag">Quick</span>${esc(cap(l[0]))}</b><small>${esc(l[2])}</small></span><span class="k">Add</span></button></li>`).join('') +
+  const mine = S.myFoods.filter(f => qt.every(t => tokens(`${f.brand || ''} ${f.name}`).some(w => w.startsWith(t)))).slice(0, 4);
+  out.innerHTML = mine.map(f => `<li><button type="button" data-action="r-add-my" data-id="${esc(f.id)}"><span><b><span class="tag">Mine</span>${esc(f.name)}</b><small>${esc(f.servingD || '')}</small></span><span class="k">Add</span></button></li>`).join('') + labs.map(l => `<li><button type="button" data-action="r-add-label" data-label="${esc(l[0])}"><span><b><span class="tag">Quick</span>${esc(cap(l[0]))}</b><small>${esc(l[2])}</small></span><span class="k">Add</span></button></li>`).join('') +
     usda.map(f => `<li><button type="button" data-action="r-add-usda" data-ndb="${f[0]}"><span><b>${esc(shortName(f[1]))}</b><small>${esc(f[1])}</small></span><span class="k">Add</span></button></li>`).join('') ||
     `<li><p class="fine" style="padding:10px 0">No matches. Try a simpler word.</p></li>`;
 }
@@ -1898,15 +1943,431 @@ async function healthImport(files){
   renderSports();
 }
 
+/* ---------- shared item builders ---------- */
+// a plate item from per-100 g numbers with an optional serving size
+function servingItem({src, code, name, sub, p, servingG, servingD}, grams, portionText){
+  const opts = [];
+  if (portionText && grams) opts.push({t:portionText, g:grams});
+  if (servingG) opts.push({t:tidy(servingD) || '1 serving', g:servingG});
+  opts.push({t:'1 oz', g:28.35}, {t:'100 g', g:100}, {t:'grams', g:1});
+  const seen = new Set(), uniq = opts.filter(o => { const k = o.t.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  let opt = 0, qty = 1;
+  if (!portionText && grams) {
+    if (servingG && Math.abs(grams / servingG - Math.round(grams / servingG * 4) / 4) < 0.01) qty = Math.round(grams / servingG * 4) / 4;
+    else { opt = uniq.length - 1; qty = Math.round(grams); }
+  }
+  return {id:uid(), src, code, name, sub, p, opts:uniq, opt, qty};
+}
+function itemsFromParsed(r){
+  const out = [], single = r.items.length === 1;
+  for (const i of r.items){
+    const it = usdaItem(i.ndb, i.g, single ? (r.label ? cap(r.label) : shortName(r.name)) : null, single ? r.portion : `${dec(i.g)} g`);
+    if (!it) continue;
+    if (r.label) it.label = r.label;
+    if (!single) it.group = r.label || r.name;
+    out.push(it);
+  }
+  return out;
+}
+// "200 g", "2 bars", "1.5 servings", "6 oz", "1 cup" anywhere in a phrase -> grams for this food
+const MASS_G = {g:1, gram:1, grams:1, kg:1000, oz:28.35, ounce:28.35, ounces:28.35, lb:453.6, lbs:453.6, pound:453.6, pounds:453.6, ml:1};
+const FR = {'½':0.5, '¼':0.25, '¾':0.75, half:0.5, a:1, an:1, one:1, two:2, three:3, four:4};
+function amountIn(text, food){
+  const s = ` ${String(text).toLowerCase()} `;
+  let m = s.match(/(\d+(?:\.\d+)?|½|¼|¾)\s*(kg|grams?|g|ounces?|oz|lbs?|pounds?|ml)\b/);
+  if (m) return {g:(FR[m[1]] ?? Number(m[1])) * MASS_G[m[2]], text:`${m[1]} ${m[2]}`};
+  m = s.match(/(\d+(?:\.\d+)?|½|¼|¾|half|an?|one|two|three|four)\s+(cups?|tbsp|tablespoons?|tsp|teaspoons?)\b/);
+  if (m) {
+    const q = FR[m[1]] ?? Number(m[1]), u = m[2];
+    const row = food && food.ndb ? BYID.get(food.ndb) : null;
+    const per = row ? gramsFromMeasure(row, u) : null;
+    const ml = /^c/.test(u) ? 240 : /^(tbsp|table)/.test(u) ? 15 : 5;
+    return {g:q * (per || ml), text:`${m[1]} ${u}`};
+  }
+  m = s.match(/(\d+(?:\.\d+)?|½|¼|¾|half|an?|one|two|three|four)\s+(servings?|bars?|pieces?|cans?|containers?|packets?|packs?|bottles?|scoops?|slices?|pouches?|bags?|cartons?|cups?|eggs?|links?|patty|patties|items?)\b/);
+  if (m) return {g:(FR[m[1]] ?? Number(m[1])) * (food?.unitG || food?.servingG || 100), count:FR[m[1]] ?? Number(m[1]), text:`${m[1]} ${m[2]}`};
+  m = s.match(/^\s*(\d+(?:\.\d+)?|½|¼|¾)\s+[a-z]/);
+  if (m) return {g:(FR[m[1]] ?? Number(m[1])) * (food?.unitG || food?.servingG || 100), count:FR[m[1]] ?? Number(m[1]), text:m[1]};
+  return null;
+}
+const nameWords = s => tokens(String(s).replace(/\d+(\.\d+)?|½|¼|¾/g, ' ')).filter(t => !/^(g|gram|kg|oz|ounc|ounce|lb|lbs|pound|ml|cup|tbsp|tsp|serving|bar|piec|piece|can|contain|container|packet|pack|bottl|bottle|scoop|slice|pouch|bag|carton|item|of|the|my|a|an|and|half)$/.test(t));
+function bestByName(name, list, nameOf){
+  const q = nameWords(name); if (!q.length) return null;
+  let best = null, bs = 0;
+  for (const f of list){
+    const ft = tokens(nameOf(f)), own = tokens(f.name || '');
+    const hit = q.filter(t => ft.some(x => x === t || (t.length >= 4 && x.length >= 4 && (x.startsWith(t) || t.startsWith(x))))).length;
+    const sc = hit / q.length + 0.2 * Math.min(1, hit / Math.max(1, own.length));
+    if (sc > bs) { bs = sc; best = f; }
+  }
+  return bs >= 0.6 ? {food:best, score:bs} : null;
+}
+
+/* ---------- "(pantry)" tag: use the exact item already in your pantry ---------- */
+const PANTRY_TAG = /\s*(\(\s*(in\s+(my\s+)?)?pantry(\s+item)?\s*\)|\b(in|from)\s+(my\s+)?pantry\b|\bpantry\s+item\b|\bpantry\b)\s*\.?\s*$/i;
+const pantryTagged = seg => PANTRY_TAG.test(seg) ? seg.replace(PANTRY_TAG, '').trim() : null;
+function pantryItemFor(text){
+  const hit = bestByName(text, S.pantry, f => `${f.name} ${f.full || ''}`);
+  if (!hit) return null;
+  const f = hit.food, amt = amountIn(text, f);
+  const grams = amt ? amt.g : (f.unitG || 100);
+  const label = amt ? amt.text : (f.unitG ? (f.unitD || '1 serving') : '100 g');
+  let it;
+  if (f.src === 'usda' && f.ndb) it = usdaItem(f.ndb, grams, f.name, amt && !amt.count ? `${label}` : (amt && amt.count ? `${dec(amt.count)} × ${f.unitD || 'serving'}` : label));
+  else it = servingItem({src:f.src, code:f.code, name:f.name, sub:'From your pantry', p:f.p, servingG:f.unitG, servingD:f.unitD}, grams);
+  if (it) it.sub = 'From your pantry' + (it.sub && it.src === 'usda' ? ' · ' + it.sub : '');
+  return it;
+}
+
+/* ---------- My foods (saved from nutrition labels and online results) ---------- */
+function saveMyFoods(){ store.put('myfoods', S.myFoods); }
+function myFoodFor(text){
+  const hit = bestByName(text, S.myFoods, f => `${f.brand || ''} ${f.name}`);
+  if (!hit || hit.score < 0.75) return null;
+  // a saved food only stands in when most of its name was typed, or every typed word (two or more) is in it
+  const q = nameWords(text), own = tokens(`${hit.food.brand || ''} ${hit.food.name}`).filter(t => !/^(and|the|of|with)$/.test(t));
+  const hits = q.filter(t => own.some(x => x === t || (t.length >= 4 && x.length >= 4 && (x.startsWith(t) || t.startsWith(x))))).length;
+  if (!(hits / Math.max(1, own.length) >= 0.5 || (q.length >= 2 && hits === q.length))) return null;
+  const f = hit.food, amt = amountIn(text, f);
+  return servingItem({src:'custom', name:f.name, sub:f.brand ? `${f.brand} · My foods` : 'My foods', p:f.p, servingG:f.servingG, servingD:f.servingD}, amt ? amt.g : (f.servingG || 100));
+}
+function addMyFood(f){
+  const key = `${(f.brand || '').toLowerCase()}|${f.name.toLowerCase()}`;
+  S.myFoods = S.myFoods.filter(x => `${(x.brand || '').toLowerCase()}|${x.name.toLowerCase()}` !== key);
+  S.myFoods.unshift({...f, id:f.id || 'my' + uid().slice(1), created:Date.now()});
+  S.myFoods = S.myFoods.slice(0, 300); saveMyFoods();
+}
+
+/* ---------- restaurant items in typed text: "large fries from mcdonalds", "10 piece mcnuggets" ---------- */
+// named: the restaurant is named in the same text; otherwise it only comes from the photo, so demand a closer match
+function chainItemFor(seg, chain, named = false){
+  if (!chain) return null;
+  const words = stripChainName(seg, chain);
+  if (!nameWords(words).length) return null;
+  const ranked = rankMenu(menuFor(chain.key), {words}).filter(x => x.role !== 'part');
+  const top = ranked[0];
+  if (!top || top.score < (named ? 0.9 : 1.6)) return null;
+  return menuPlateItem(top, portionPick(top, seg));
+}
+function portionPick(it, text){
+  const po = portionsOf(it), s = String(text || '').toLowerCase();
+  const n = s.match(/(\d+)\s*(-|\s)?\s*(pc|piece|pieces|count|ct|nuggets?|strips?|slices?|wings?|tacos?)\b/) || (it.counts ? s.match(/^\s*(\d+)\b/) : null);
+  if (n && it.counts) { const want = Number(n[1]); let bi = 0; po.forEach((p, i) => { if (Math.abs(parseInt(p.t) - want) < Math.abs(parseInt(po[bi].t) - want)) bi = i; }); return bi; }
+  for (const w of ['large', 'medium', 'small', '12 inch', 'footlong', '6 inch', 'kid']) if (s.includes(w)) { const i = po.findIndex(p => p.t.toLowerCase().includes(w === 'footlong' ? '12 inch' : w)); if (i >= 0) return i; }
+  if (it.counts && it.counts.choices.includes(6) && /mcnugget|nugget/i.test(it.full)) return po.findIndex(p => parseInt(p.t) === 6);
+  return 0;
+}
+function menuPlateItem(it, i = 0){
+  const po = portionsOf(it)[i] || portionsOf(it)[0];
+  const chain = it.chain ? CHAIN_BY[it.chain] : null;
+  const pi = usdaItem(it.ndb, po.g, it.name, po.t);
+  if (!pi) return null;
+  pi.sub = chain && !it.generic ? `${chain.name} · USDA` : it.estimated ? `Estimated from ${it.basedOn}` : 'Typical version · USDA';
+  pi.label = null;
+  return pi;
+}
+
+/* ---------- typed brand foods -> online lookup ---------- */
+async function lookupOnline(seg){
+  const q = seg.replace(/(\d+(\.\d+)?|½|¼|¾)\s*(kg|grams?|g|ounces?|oz|lbs?|ml|servings?|bars?|pieces?|cans?|bottles?|packs?|scoops?|cups?)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  const {items} = await searchOnline(q, {fdcKey:settings().fdcKey || ''});
+  return {q, items};
+}
+function onlinePlateItem(r, text){
+  const amt = text ? amountIn(text, r) : null;
+  return servingItem({src:r.src === 'fdc' ? 'fdc' : 'off', code:r.code, name:r.brand && !r.name.toLowerCase().includes(r.brand.toLowerCase()) ? `${r.brand} ${r.name}` : r.name,
+    sub:r.src === 'fdc' ? 'USDA FoodData Central' : 'Open Food Facts', p:r.p, servingG:r.servingG, servingD:r.servingD}, amt ? amt.g : (r.servingG || 100));
+}
+
+/* ---------- photo details: words that refine what the camera saw ---------- */
+const PORTION_ONLY = /^\s*((about|around|like|roughly)\s+)?(\d+(\.\d+)?|½|¼|¾|half|a half|quarter|double|triple|x\s?\d|\d\s?x)\s*(oz|ounces?|g|grams?|lbs?|kg|cups?|tbsp|tsp|slices?|pieces?|servings?|bowls?|plates?|portions?)?\s*$|^\s*(small|medium|large|extra large|kids?|half|double)( size| portion| serving)?\s*$/i;
+const normPortion = p => String(p).trim().toLowerCase().replace(/^(about|around|like|roughly)\s+/, '').replace(/^(a )?half\b/, '0.5').replace(/^quarter\b/, '0.25').replace(/^double\b/, '2').replace(/^triple\b/, '3').replace(/^x\s?(\d)/, '$1').replace(/^(\d)\s?x$/, '$1');
+function analyzeDesc(text){
+  const out = {plate:[], missing:[], portion:null, hint:[], brandSegs:[], notes:[]};
+  const named = detectChain(text), chain = named || (S.rest.chain ? CHAIN_BY[S.rest.chain] : null);
+  out.chain = named;
+  // a package in the photo: the words describe it (flavor, size), so they steer the label search instead of adding foods
+  const ocr = S.pk.res?.text || '';
+  const pkgCtx = !!(S.photo && !named && (S.pk.res?.items?.length || brandOf(ocr)));
+  const ocrT = new Set(tokens(ocr));
+  for (const chunk of String(text).split(/[,;\n]+/).map(x => x.trim()).filter(Boolean)){
+    const pt = pantryTagged(chunk);
+    if (pt != null) {
+      const it = pantryItemFor(pt);
+      if (it) { out.plate.push(it); out.notes.push(`${it.name} from your pantry`); } else out.missing.push(`${pt} (no pantry match)`);
+      continue;
+    }
+    if (pkgCtx) {
+      if (PORTION_ONLY.test(chunk)) { out.portion = chunk; continue; }
+      const r = /^\s*(\d|½|¼|¾|an?\s)/.test(chunk) ? parseSegment(chunk, INDEX, BYID) : null;
+      if (r && !r.missing && !nameWords(chunk).some(t => ocrT.has(t))) { const its = itemsFromParsed(r); out.plate.push(...its); out.notes.push(its.map(i => i.name).join(', ')); }
+      else out.hint.push(chunk);
+      continue;
+    }
+    if (!detectChain(chunk)) { const mine = myFoodFor(chunk); if (mine) { out.plate.push(mine); out.notes.push(mine.name); continue; } }
+    if (!detectChain(chunk) && brandOf(chunk)) { out.brandSegs.push(chunk); out.hint.push(chunk); continue; }
+    for (const seg of splitMeal(chunk)){
+      if (PORTION_ONLY.test(seg)) { out.portion = seg; continue; }
+      const ci = chainItemFor(seg, chain, !!named);
+      if (ci) { out.plate.push(ci); out.notes.push(ci.name); continue; }
+      if (chain && !nameWords(stripChainName(seg, chain)).length && detectChain(seg)) continue;   // just "from mcdonalds"
+      const mine = myFoodFor(seg);
+      if (mine) { out.plate.push(mine); out.notes.push(mine.name); continue; }
+      if (brandOf(seg)) { out.brandSegs.push(seg); out.hint.push(seg); continue; }
+      const r = parseSegment(seg, INDEX, BYID);
+      if (r && !r.missing) { const its = itemsFromParsed(r); out.plate.push(...its); out.notes.push(its.map(i => i.name).join(', ')); }
+      else out.hint.push(seg);
+    }
+  }
+  out.hint = out.hint.join(' ');
+  return out;
+}
+function photoGuessItems(label){
+  const por = S.desc.applied?.portion;
+  if (por) {
+    const r = parseMeal(`${normPortion(por)} ${label}`, INDEX, BYID)[0];
+    if (r && !r.missing) { const its = itemsFromParsed(r); if (its.length) return its; }
+  }
+  return labelItems(label);
+}
+async function applyDesc(){
+  const text = ($('#photo-desc')?.value || '').trim();
+  S.desc.text = text;
+  if (!text) { S.desc.applied = null; S.desc.online = null; renderPhoto(); return; }
+  const a = analyzeDesc(text);
+  S.desc.applied = a;
+  if (a.plate.length) addToPlate(a.plate, {quiet:true});
+  // the photo's label search and restaurant menu both use the typed words
+  if (S.photo && a.hint && !S.pk.busy) runPackaged();
+  else if (S.photo) updateRestaurant();
+  S.desc.online = null;
+  if (a.brandSegs.length && (!S.photo || !S.pk.res?.items?.length) && navigator.onLine) {
+    S.desc.online = {busy:true, q:a.brandSegs.join(', ')}; renderPhoto();
+    try { const r = await lookupOnline(a.brandSegs.join(' ')); S.desc.online = {busy:false, q:r.q, items:r.items.slice(0, 6), seg:a.brandSegs[0]}; }
+    catch { S.desc.online = {busy:false, q:a.brandSegs.join(', '), items:[], err:true}; }
+  }
+  renderPhoto();
+  const bits = [a.plate.length ? `added ${a.plate.length} food${a.plate.length === 1 ? '' : 's'} to your plate` : '', a.portion ? `photo picks use “${a.portion}”` : '', a.hint && S.photo ? 'searching the label with your words' : ''].filter(Boolean);
+  toast(bits.length ? cap(bits.join(' · ')) : 'Details saved for this photo');
+}
+function descOutHTML(){
+  const a = S.desc.applied, o = S.desc.online;
+  if (!a && !o) return '';
+  let html = '';
+  if (a) {
+    const parts = [...a.notes.map(n => `<span>${esc(n)}</span>`), a.portion ? `<span>Portion: ${esc(a.portion)}</span>` : '', a.hint ? `<span>Label search: “${esc(a.hint)}”</span>` : '', ...a.missing.map(m => `<span class="unk">${esc(m)}</span>`)].filter(Boolean);
+    if (parts.length) html += `<div class="dietsum">${parts.join('')}</div>`;
+  }
+  if (o) {
+    if (o.busy) html += `<div class="recbox"><span><span class="spin"></span> <b>Looking up “${esc(o.q)}” online…</b></span></div>`;
+    else if (o.items && o.items.length) html += `<div class="sec"><div class="sec-head"><h2 class="h">Found online</h2><span class="sub">for “${esc(o.q)}”</span></div><ul class="results">${o.items.map((r, i) => onlineRowHTML(r, i, 'desc')).join('')}</ul></div>`;
+    else html += `<p class="notice">${o.err ? 'Couldn’t reach the online databases.' : `Nothing online matched “${esc(o.q)}”.`} <a href="${esc(webSearchURL(o.q))}" target="_blank" rel="noopener">Search the web</a>, then scan the nutrition label under Type.</p>`;
+  }
+  return html;
+}
+function onlineRowHTML(r, i, ctx){
+  const kcal = r.servingG ? r.p[0] * r.servingG / 100 : r.p[0];
+  return `<li><button type="button" data-action="online-add" data-ctx="${ctx}" data-i="${i}"><span><b>${r.src === 'fdc' ? '<span class="tag">USDA label</span>' : '<span class="tag">Open Food Facts</span>'}${esc(r.brand && !r.name.toLowerCase().includes(r.brand.toLowerCase()) ? r.brand + ' ' : '')}${esc(r.name)}</b>
+    <small>${esc(r.servingD || '100 g')} · P ${dec(r.p[1] * (r.servingG || 100) / 100)} g · C ${dec(r.p[2] * (r.servingG || 100) / 100)} g · F ${dec(r.p[3] * (r.servingG || 100) / 100)} g</small></span><span class="k tnum">${int(kcal)} kcal</span></button></li>`;
+}
+
+/* ---------- restaurant packaging in the photo ---------- */
+async function updateRestaurant(){
+  const ph = S.photo, R = S.rest;
+  const words = [S.pk.res?.text || '', S.desc.text || ''].join(' ');
+  let chain = R.manual ? CHAIN_BY[R.manual] : detectChain(words), src = R.manual ? 'picked' : chain ? 'text' : '', ask = null;
+  if (!chain && ph && !R.no && S.rec.state === 'ready') {
+    try {
+      if (R.clipFor !== ph) { R.clip = await (await recognizer()).classifyChain(ph.blob); R.clipFor = ph; }
+      if (R.clip.key && R.clip.p >= 0.55) { chain = CHAIN_BY[R.clip.key]; src = 'image'; }
+      else if (R.clip.key && R.clip.p >= 0.3) ask = R.clip.key;
+    } catch (e) { console.error(e); }
+  }
+  if (S.photo !== ph) return;
+  Object.assign(S.rest, {chain:chain && !R.no ? chain.key : null, src, ask:R.no ? null : ask});
+  renderPhoto();
+}
+function menuRowHTML(it, ctx){
+  const po = portionsOf(it), sel = Math.max(0, portionPick(it, S.desc.applied?.portion || S.desc.text || ''));
+  const n = nutOf(it, po[sel].g);
+  return `<li class="guess"><span><b>${esc(it.name)}${it.retired ? ' <em class="old">may be discontinued</em>' : ''}</b><small class="tnum">${int(n.kcal)} kcal · P ${int(n.p)} · C ${int(n.c)} · F ${int(n.f)}${n.na > 1200 ? ` · ${int(n.na)} mg sodium` : ''}</small>
+    ${po.length > 1 ? `<select class="alt" data-menu-size="${esc(it.id)}" data-ctx="${ctx}" aria-label="Size">${po.map((p, i) => `<option value="${i}" ${i === sel ? 'selected' : ''}>${esc(p.t)}</option>`).join('')}</select>` : `<small>${esc(po[0].t)}</small>`}</span>
+    <button type="button" class="btn primary sm" data-action="menu-add" data-id="${esc(it.id)}" data-ctx="${ctx}">Add</button></li>`;
+}
+function restHTML(){
+  const R = S.rest; if (!S.photo) return '';
+  if (!R.chain) {
+    const ask = R.ask && CHAIN_BY[R.ask];
+    return ask ? `<div class="recbox"><span><b>From ${esc(ask.name)}?</b><br><span class="sub">The packaging looks like it.</span></span><div class="row2"><button type="button" class="btn primary sm" data-action="rest-yes" data-k="${ask.key}">Yes, show the menu</button><button type="button" class="btn ghost sm" data-action="rest-no">No</button></div></div>`
+      : R.open ? `<div class="fix-row restpick"><span class="fine">Which restaurant?</span><select data-rest-pick aria-label="Pick the restaurant"><option value="">Pick…</option>${CHAINS.map(c => `<option value="${c.key}">${esc(c.name)}</option>`).join('')}</select></div>`
+      : '';
+  }
+  const chain = CHAIN_BY[R.chain], menu = menuFor(R.chain);
+  const words = [S.pk.res?.text || '', S.desc.text || ''].join(' ');
+  let list = rankMenu(menu, {words, guesses:S.rec.results || []}).filter(x => x.role !== 'part');
+  if (R.filter) { const q = tokens(R.filter); list = list.filter(it => q.every(t => tokens(it.full).some(x => x.startsWith(t)))); }
+  return `<div class="sec"><div class="sec-head"><h2 class="h">${esc(chain.name)}</h2><button type="button" class="linkbtn" data-action="rest-clear">Not ${esc(chain.name)}?</button></div>
+    <p class="fine">${R.src === 'image' ? 'Recognized from the packaging.' : R.src === 'text' ? 'Read from the packaging or your details.' : 'You picked it.'} ${chain.usda ? 'Numbers are USDA’s analysis of the chain’s food.' : `The app has no official ${esc(chain.name)} numbers, so these are typical versions. For exact numbers, snap the menu in Meals → Eat out.`}</p>
+    <ul class="guesses">${list.slice(0, R.filter ? 12 : 5).map(it => menuRowHTML(it, 'photo')).join('') || '<li><p class="fine">No items match.</p></li>'}</ul>
+    <input type="text" data-rest-filter value="${esc(R.filter || '')}" placeholder="Search the ${esc(chain.name)} menu" aria-label="Search the menu"></div>`;
+}
+function findMenuItem(id, ctx){
+  if (ctx === 'eo' && S.eo.menu) { const m = S.eo.menu.items.find(x => x.id === id); if (m) return m; }
+  const keys = [S.rest.chain, S.eo.chain, S.eo.kind && 'kind:' + S.eo.kind].filter(Boolean);
+  for (const k of keys){ const m = (k.startsWith('kind:') ? genericMenu(k.slice(5)) : menuFor(k)).find(x => x.id === id); if (m) return m; }
+  for (const c of CHAINS){ const m = menuFor(c.key).find(x => x.id === id); if (m) return m; }
+  return null;
+}
+
+/* ---------- nutrition label scanner ---------- */
+async function scanLabel(file){
+  S.lbl = {busy:true, step:'Reading the label…'}; renderTypeExtra();
+  try {
+    const text = await readText(file, t => { S.lbl.step = t; const el = $('#lbl-step'); if (el) el.textContent = t; });
+    const L = parseLabel(text);
+    if (L.found < 3) { S.lbl = {err:'Couldn’t find a nutrition label in that photo. Fill the frame with the label, keep it flat and in good light. Screenshots of a website’s nutrition info work too.', raw:text}; }
+    else S.lbl = {form:{name:'', brand:'', servingText:L.servingText || (L.per100 ? '100 g' : '1 serving'), servingG:L.servingG || (L.per100 ? 100 : ''), kcal:L.kcal, protein:L.protein, carbs:L.carbs, fat:L.fat, fiber:L.fiber, sugar:L.sugar, satFat:L.satFat, sodium:L.sodium, chol:L.chol, potassium:L.potassium, calcium:L.calcium, iron:L.iron, vitD:L.vitD, per100:L.per100}, check:L.check, raw:text};
+  } catch (e) { console.error(e); S.lbl = {err:'Couldn’t read that photo.'}; }
+  renderTypeExtra();
+  requestAnimationFrame(() => $('#type-extra')?.scrollIntoView({behavior:reduced() ? 'auto' : 'smooth', block:'start'}));
+}
+const LBL_FIELDS = [['kcal', 'Calories', ''], ['protein', 'Protein', 'g'], ['carbs', 'Carbs', 'g'], ['fat', 'Fat', 'g'], ['fiber', 'Fiber', 'g'], ['sugar', 'Sugars', 'g'], ['satFat', 'Sat. fat', 'g'], ['sodium', 'Sodium', 'mg'], ['chol', 'Cholesterol', 'mg'], ['potassium', 'Potassium', 'mg']];
+function labelCardHTML(){
+  const L = S.lbl; if (!L) return '';
+  if (L.busy) return `<div class="recbox"><span><span class="spin"></span> <b id="lbl-step">${esc(L.step)}</b></span></div>`;
+  if (L.err) return `<p class="err">${esc(L.err)} <button type="button" class="linkbtn" data-action="lbl-cancel">Close</button></p>`;
+  const f = L.form, est = 9 * num(f.fat) + 4 * num(f.carbs) + 4 * num(f.protein);
+  const off = num(f.kcal) && est ? Math.abs(est - num(f.kcal)) / num(f.kcal) : 0;
+  return `<div class="card sec lblcard"><div class="sec-head"><h3 class="h">Nutrition label</h3><button type="button" class="linkbtn" data-action="lbl-cancel">Cancel</button></div>
+    <p class="fine">Check the numbers against the label and fix anything misread. ${f.per100 ? 'This label lists amounts per 100 g.' : 'Amounts are per serving.'}</p>
+    <div class="grid2"><div class="field"><label for="lbl-name">Food name</label><input type="text" id="lbl-name" data-lbl="name" value="${esc(f.name)}" placeholder="e.g. Salty Peanut protein bar"></div>
+      <div class="field"><label for="lbl-brand">Brand</label><input type="text" id="lbl-brand" data-lbl="brand" value="${esc(f.brand)}" placeholder="e.g. Barebells"></div></div>
+    <div class="grid2"><div class="field"><label for="lbl-st">Serving</label><input type="text" id="lbl-st" data-lbl="servingText" value="${esc(f.servingText)}"></div>
+      <div class="field"><label for="lbl-sg">Serving weight</label><div class="unit"><input type="number" id="lbl-sg" inputmode="decimal" data-lbl="servingG" value="${esc(f.servingG ?? '')}"><em>g</em></div></div></div>
+    <div class="grid3 lblgrid">${LBL_FIELDS.map(([k, l, u]) => `<div class="field"><label for="lbl-${k}">${l}</label><div class="unit"><input type="number" id="lbl-${k}" inputmode="decimal" step="any" data-lbl="${k}" value="${esc(f[k] ?? '')}">${u ? `<em>${u}</em>` : ''}</div></div>`).join('')}</div>
+    <p class="fine tnum" id="lbl-check">${off > 0.25 ? `⚠ Fat, carbs and protein add up to about ${int(est)} kcal, but the label says ${int(f.kcal)}. A number may be misread.` : num(f.kcal) ? `✓ Fat, carbs and protein add up to about ${int(est)} kcal, close to the label’s ${int(f.kcal)}.` : ''}</p>
+    ${!num(f.servingG) && !f.per100 ? '<p class="notice">Add the serving weight in grams (it’s usually in brackets next to the serving size) so portions work.</p>' : ''}
+    <div class="row2"><button type="button" class="btn primary" data-action="lbl-save">Save to My foods &amp; add</button><button type="button" class="btn ghost" data-action="lbl-once">Add once</button></div></div>`;
+}
+function labelFood(){
+  const f = S.lbl.form, sg = num(f.servingG) || (f.per100 ? 100 : 0);
+  if (!num(f.kcal) && !num(f.protein) && !num(f.carbs) && !num(f.fat)) { toast('Enter at least the calories'); return null; }
+  const name = (f.name || '').trim() || 'Scanned food';
+  return {name:name.slice(0, 60), brand:(f.brand || '').trim().slice(0, 40), servingG:sg || 100, servingD:(f.servingText || '').trim() || (sg ? `${sg} g` : '1 serving'),
+    p:labelToP100({...f, kcal:num(f.kcal), protein:num(f.protein), carbs:num(f.carbs), fat:num(f.fat), fiber:num(f.fiber), sugar:num(f.sugar), satFat:num(f.satFat), sodium:num(f.sodium), chol:num(f.chol), potassium:num(f.potassium), calcium:num(f.calcium), iron:num(f.iron), vitD:num(f.vitD)}, sg || 100), src:'custom'};
+}
+function renderTypeExtra(){
+  const el = $('#type-extra'); if (!el) return;
+  const o = S.online;
+  let html = labelCardHTML();
+  if (o.busy) html += `<div class="recbox"><span><span class="spin"></span> <b>Searching online for “${esc(o.q)}”…</b></span></div>`;
+  else if (o.items) {
+    const errs = [o.errors.includes('fdc-rate') ? 'USDA’s shared key is busy right now; add your own free key in Body → Settings.' : o.errors.includes('fdc') ? 'USDA FoodData Central didn’t answer.' : '', o.errors.includes('off') ? 'Open Food Facts didn’t answer.' : ''].filter(Boolean);
+    html += `<div class="sec"><div class="sec-head"><h2 class="h">Online results</h2><span class="sub">“${esc(o.q)}”</span></div>
+      ${errs.length ? `<p class="notice">${esc(errs.join(' '))}</p>` : ''}
+      ${o.items.length ? `<ul class="results">${o.items.map((r, i) => onlineRowHTML(r, i, 'type')).join('')}</ul>` : '<p class="fine">No online matches.</p>'}
+      <p class="fine">Not the right one? <a href="${esc(webSearchURL(o.q))}" target="_blank" rel="noopener">Search the web for its nutrition</a>, screenshot the nutrition facts, then tap <b>Scan nutrition label</b> and pick the screenshot.</p></div>`;
+  }
+  el.innerHTML = html;
+}
+async function runOnline(q){
+  q = String(q || '').trim(); if (q.length < 2) { toast('Type a food or brand first'); return; }
+  if (!navigator.onLine) { toast('You’re offline. Online search needs a connection.'); return; }
+  S.online = {q, busy:true, items:null, errors:[]}; renderTypeExtra();
+  try { const r = await searchOnline(q, {fdcKey:settings().fdcKey || ''}); S.online = {q, busy:false, items:r.items, errors:r.errors}; }
+  catch { S.online = {q, busy:false, items:[], errors:['off', 'fdc']}; }
+  renderTypeExtra();
+}
+
+/* ---------- eating out ---------- */
+const poss = n => /['’]s$/i.test(n) ? n : `${n}’s`;
+function mealTarget(){
+  const g = targets(), t = dayTotals(dayKey()), h = new Date().getHours();
+  const left = {kcal:g.calories - t.calories, p:g.protein_g - t.protein_g, c:g.carbs_g - t.carbs_g, f:g.fat_g - t.fat_g};
+  const meals = dietOpts().meals || 3, eaten = (S.days[dayKey()]?.entries || []).filter(e => e.meal !== 'snack').length;
+  const mealsLeft = Math.max(1, Math.min(Math.max(1, meals - eaten), h >= 19 ? 1 : h >= 15 ? 2 : meals));
+  const r = x => Math.max(0, Math.round(x / mealsLeft));
+  return {kcal:Math.max(250, Math.round(left.kcal / mealsLeft / 10) * 10), protein:Math.max(15, r(left.p)), carbs:r(left.c), fat:r(left.f), mealsLeft, left,
+    note:left.kcal > 150 ? `About ${int(left.kcal)} kcal and ${int(Math.max(0, left.p))} g protein left today, split over ${mealsLeft} meal${mealsLeft > 1 ? 's' : ''}. Change these for this meal.` : 'You’re at your calorie goal for today, so these are the lightest picks.'};
+}
+function eoGo(){
+  const q = ($('#eo-q')?.value || '').trim(); S.eo.q = q;
+  if (!q) { toast('Type a restaurant name'); return; }
+  const c = chainByName(q);
+  S.eo.menu = null;
+  if (c) { S.eo.chain = c.key; S.eo.kind = c.usda ? null : c.kind; }
+  else { S.eo.chain = null; S.eo.kind = kindFromName(q); }
+  renderMeals();
+}
+async function eoPhoto(file){
+  S.eo.busy = true; S.eo.err = ''; S.eo.step = 'Reading the menu…'; renderMeals();
+  try {
+    const step = t => { S.eo.step = t; const el = $('#eo-step'); if (el) el.textContent = t; };
+    const words = await readWords(file, step);
+    const text = words.map(w => w.text).join(' ');
+    let found = parseMenuWords(words);
+    if (found.length < 2) { const t2 = await readText(file, step, {psm:'3'}); const f2 = parseMenuText(t2); if (f2.length > found.length) found = f2; }
+    const chain = detectChain(text) || (S.eo.chain ? CHAIN_BY[S.eo.chain] : null);
+    const ref = chain && chain.usda ? menuFor(chain.key) : [];
+    const items = found.map(e => estimateMenuItem(e, ref)).filter(Boolean);
+    if (!items.length) S.eo.err = 'Couldn’t find menu items with calories. Get closer so the item names and calorie numbers are sharp, or type the restaurant name.';
+    else { S.eo.menu = {items, chain:chain ? chain.key : null}; if (chain) { S.eo.chain = chain.key; S.eo.q = chain.name; } }
+  } catch (e) { console.error(e); S.eo.err = 'Couldn’t read that photo.'; }
+  finally { S.eo.busy = false; if (S.tab === 'eatout') renderMeals(); }
+}
+function comboHTML(c, list, i, T){
+  const n = c.n, onT = Math.abs(n.kcal - T.kcal) <= T.kcal * 0.1 && n.p >= T.protein * 0.9;
+  return `<div class="idea"><div class="idea-top"><span><b>${esc(c.parts.map(p => p.it.name).join(' + '))}</b><small>${esc(c.parts.map(p => p.po.t).join(' · '))}</small></span>${onT ? '<span class="match">on target</span>' : ''}</div>
+    <p class="mac tnum"><b>${int(n.kcal)} kcal</b> · P ${int(n.p)} g · C ${int(n.c)} g · F ${int(n.f)} g${n.na > 1500 ? ` · <span class="hi">${int(n.na)} mg sodium</span>` : ''}</p>
+    <button type="button" class="btn ghost sm" data-action="eo-log" data-list="${list}" data-i="${i}">Log this</button></div>`;
+}
+function renderEatOut(el){
+  const E = S.eo, T0 = mealTarget();
+  const T = {kcal:num(E.tKcal) || T0.kcal, protein:num(E.tP) || T0.protein, carbs:T0.carbs, fat:T0.fat};
+  let items = null, title = '', note = '';
+  if (E.menu) { items = E.menu.items; const c = E.menu.chain && CHAIN_BY[E.menu.chain]; title = c ? `${c.name} menu` : 'Your menu'; note = `Calories read from your photo; protein, carbs and fat estimated from similar dishes${c && c.usda ? ` and ${poss(c.name)} own items` : ''}.`; }
+  else if (E.chain && CHAIN_BY[E.chain].usda) { const c = CHAIN_BY[E.chain]; items = menuFor(c.key); title = c.name; note = `Numbers are USDA’s analysis of ${c.name} food from the 2010s. Recipes and sizes change, so treat them as close estimates.`; }
+  else if (E.kind) { items = genericMenu(E.kind); const c = E.chain && CHAIN_BY[E.chain]; title = c ? c.name : (E.q || 'This restaurant'); note = `${c ? `The app has no official ${c.name} numbers` : 'That restaurant isn’t in the app’s data'}, so these are typical dishes at a ${KIND_LABEL[E.kind] || 'restaurant'}. Snap the menu for its real calories.`; }
+  const sg = items && items.length ? suggest(items, T) : null;
+  S.eo.sg = sg;
+  const searchQ = E.chain ? CHAIN_BY[E.chain].name : E.q;
+  el.innerHTML = `<div class="card sec"><h3 class="h">Where are you eating?</h3>
+      <div class="fix-row"><input type="text" id="eo-q" list="eo-list" autocomplete="off" value="${esc(E.q)}" placeholder="Restaurant, e.g. McDonald's"><button type="button" class="btn primary sm" data-action="eo-go">Show ideas</button></div>
+      <datalist id="eo-list">${CHAINS.map(c => `<option value="${esc(c.name)}"></option>`).join('')}</datalist>
+      <div class="row2"><button type="button" class="btn ghost" data-action="eo-photo" data-cam="1">${CAM_SVG}Photo of menu</button><button type="button" class="btn ghost" data-action="eo-photo">From gallery</button></div>
+      <p class="fine">Chains with 20 or more locations print calories on their menus, so a photo of the menu board gives real numbers.</p></div>
+    <div class="card sec"><h3 class="h">This meal</h3>
+      <div class="grid2"><div class="field"><label for="eo-kcal">Calories</label><div class="unit"><input type="number" id="eo-kcal" inputmode="numeric" value="${esc(E.tKcal || T0.kcal)}"><em>kcal</em></div></div>
+        <div class="field"><label for="eo-p">Protein at least</label><div class="unit"><input type="number" id="eo-p" inputmode="numeric" value="${esc(E.tP || T0.protein)}"><em>g</em></div></div></div>
+      <p class="fine">${esc(T0.note)}</p></div>
+    ${E.busy ? `<div class="recbox"><span><span class="spin"></span> <b id="eo-step">${esc(E.step)}</b></span></div>` : ''}
+    ${E.err ? `<p class="err">${esc(E.err)}</p>` : ''}
+    ${sg ? `<div class="sec"><div class="sec-head"><h2 class="h">${esc(title)}</h2>${E.menu ? '<button type="button" class="linkbtn" data-action="eo-clear-menu">Clear menu</button>' : ''}</div><p class="fine">${esc(note)}</p></div>
+      ${sg.best.length ? `<div class="sec"><h3 class="h">Best fits for this meal</h3>${sg.best.map((c, i) => comboHTML(c, 'best', i, T)).join('')}</div>` : '<p class="fine">Nothing on this menu fits well. Try a higher calorie target.</p>'}
+      ${sg.protein.length ? `<div class="sec"><h3 class="h">Most protein for the calories</h3>${sg.protein.map((c, i) => comboHTML(c, 'protein', i, T)).join('')}</div>` : ''}
+      ${sg.light.length ? `<div class="sec"><h3 class="h">Lighter</h3>${sg.light.map((c, i) => comboHTML(c, 'light', i, T)).join('')}</div>` : ''}
+      <details class="help"><summary>Full menu (${items.filter(x => x.role !== 'part').length} items)</summary><ul class="guesses">${items.filter(x => x.role !== 'part').map(it => menuRowHTML(it, 'eo')).join('')}</ul></details>
+      ${searchQ ? `<p class="fine"><a href="${esc(webSearchURL(searchQ))}" target="_blank" rel="noopener">Look up ${esc(poss(searchQ))} current nutrition</a>. Screenshot an item’s nutrition and scan it under Add food → Type for exact numbers.</p>` : ''}` : ''}
+    ${!sg && !E.busy ? `<div class="empty"><b>Eating out?</b><p>Type the restaurant or snap its menu. You get picks sized to what’s left of your calories and protein today.</p></div>` : ''}`;
+}
+function logCombo(c){
+  const its = c.parts.map(p => { const pi = menuPlateItem(p.it, portionsOf(p.it).findIndex(x => x.t === p.po.t)); if (pi) pi.group = (CHAIN_BY[p.it.chain] || {}).name || S.eo.q || ''; return pi; }).filter(Boolean);
+  if (!its.length) return;
+  S.plate.push(...its);
+  S.plateName = c.parts.map(p => p.it.name).join(' + ').slice(0, 60);
+  setTab('scan'); toast('On your plate. Adjust anything, then add it to your log.');
+}
+
 /* ---------- tabs, toast ---------- */
 function setTab(t){
   S.tab = t;
-  const view = t === 'containers' ? 'meals' : t, nav = ['pantry', 'containers'].includes(t) ? 'meals' : t;
+  const view = ['containers', 'eatout'].includes(t) ? 'meals' : t, nav = ['pantry', 'containers', 'eatout'].includes(t) ? 'meals' : t;
   ['today','week','scan','meals','pantry','sports','body'].forEach(v => $('#view-' + v).hidden = v !== view);
   $$('.tabs [data-action="tab"]').forEach(b => b.dataset.tab === nav ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   $('#body-btn').toggleAttribute('aria-current', t === 'body');
   $$('#view-pantry .seg [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
-  if (t === 'meals' || t === 'containers') renderMeals();
+  if (t === 'meals' || t === 'containers' || t === 'eatout') renderMeals();
+  if (t === 'scan') renderTypeExtra();
   if (t === 'sports') renderSports();
   if (t !== 'scan') bcStop();
   if (t === 'today') renderToday();
@@ -1944,7 +2405,7 @@ document.addEventListener('click', e => {
     case 'mode': S.mode = b.dataset.mode; renderScan(); if (S.mode === 'type') setTimeout(() => $('#search-in').focus(), 50); break;
     case 'take-photo': $('#in-cam').click(); break;
     case 'pick-photo': $('#in-gal').click(); break;
-    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.pk.res = null; S.pk.busy = false; renderPhoto(); break;
+    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.pk.res = null; S.pk.busy = false; S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''}; renderPhoto(); break;
     case 'pk-add': {
       const it = (S.pk.res?.items || []).find(x => x.id === b.dataset.id); if (!it || S.pk.added.has(it.id)) break;
       b.disabled = true;
@@ -1953,7 +2414,7 @@ document.addEventListener('click', e => {
     case 'rec-download': downloadRecognizer(); break;
     case 'guess-add': {
       const lab = b.dataset.label; if (S.rec.added.has(lab)) break;
-      const items = labelItems(lab); S.rec.added.add(lab); addToPlate(items); renderPhoto(); break; }
+      const items = photoGuessItems(lab); S.rec.added.add(lab); addToPlate(items); renderPhoto(); break; }
     case 'bc-start': bcStart(); break;
     case 'bc-stop': bcStop(); bcMsg(''); break;
     case 'bc-lookup': lookupBarcode($('#bc-code').value); break;
@@ -2010,6 +2471,7 @@ document.addEventListener('click', e => {
       let n = 0; for (const d of S.pan.detect || []) { if (!S.pan.sel.has(d.name)) continue; const P = PANTRY.find(x => x[0] === d.name); if (P && addPantry(pantryFood(P[2], P[0], P[3]))) n++; }
       S.pan.detect = null; S.pan.sel = new Set(); renderPantry(); toast(`Added ${n} item${n === 1 ? '' : 's'} to your pantry`); break; }
     case 'pan-add': { const ok = addPantry(pantryFood(Number(b.dataset.ndb), b.dataset.name || null, b.dataset.role || null)); $('#pan-search').value = ''; $('#pan-results').innerHTML = ''; renderPantry(); toast(ok ? 'Added to your pantry' : 'Already in your pantry'); break; }
+    case 'pan-add-my': { const f = S.myFoods.find(x => x.id === b.dataset.id); if (f) { const ok = addPantry({key:'my' + f.id, src:'custom', name:f.brand && !f.name.toLowerCase().includes(f.brand.toLowerCase()) ? `${f.brand} ${f.name}` : f.name, p:f.p, unitG:f.servingG || 0, unitD:f.servingD || '', group:0, role:null}); $('#pan-search').value = ''; $('#pan-results').innerHTML = ''; renderPantry(); toast(ok ? 'Added to your pantry' : 'Already in your pantry'); } break; }
     case 'pan-del': S.pantry = S.pantry.filter(x => x.key !== b.dataset.key); savePantry(); S.pan.ideas = null; S.pan.plan = null; renderPantry(); break;
     case 'pan-clear': if (b.dataset.confirm) { S.pantry = []; savePantry(); S.pan.ideas = S.pan.plan = null; delete b.dataset.confirm; b.textContent = 'Clear all'; renderPantry(); } else { b.dataset.confirm = '1'; b.textContent = 'Tap again to clear'; setTimeout(() => { delete b.dataset.confirm; b.textContent = 'Clear all'; }, 4000); } break;
     case 'pan-barcode': S.bcTarget = 'pantry'; S.mode = 'barcode'; setTab('scan'); bcMsg('Scanning for your pantry. The item goes to your pantry, not your log.'); break;
@@ -2018,6 +2480,34 @@ document.addEventListener('click', e => {
     case 'pan-day': makeIdeas('day'); break;
     case 'idea-log': { const idea = (S.pan.logList || [])[Number(b.dataset.idx)]; if (idea) logIdea(idea, b.dataset.slot || null); break; }
     case 'import': $('#in-backup').click(); break;
+    /* photo details, online, labels, restaurants */
+    case 'desc-apply': applyDesc(); break;
+    case 'online-search': runOnline($('#search-in').value.trim() || $('#type-in').value.trim()); break;
+    case 'online-add': {
+      const src = b.dataset.ctx === 'desc' ? S.desc.online : S.online, r = src?.items?.[Number(b.dataset.i)]; if (!r) break;
+      addToPlate([onlinePlateItem(r, src.seg || '')]); rememberOnline(r); break; }
+    case 'add-my': { const f = S.myFoods.find(x => x.id === b.dataset.id); if (f) { addToPlate([servingItem({src:'custom', name:f.name, sub:f.brand ? `${f.brand} · My foods` : 'My foods', p:f.p, servingG:f.servingG, servingD:f.servingD}, f.servingG || 100)]); $('#search-results').innerHTML = ''; $('#search-in').value = ''; } break; }
+    case 'lbl-scan': pickImage(f => scanLabel(f), !!b.dataset.cam); break;
+    case 'lbl-cancel': S.lbl = null; renderTypeExtra(); break;
+    case 'lbl-save': case 'lbl-once': {
+      const food = labelFood(); if (!food) break;
+      if (a === 'lbl-save') { addMyFood(food); toast(`Saved ${food.name} to My foods`); }
+      addToPlate([servingItem({src:'custom', name:food.name, sub:food.brand ? `${food.brand} · ${a === 'lbl-save' ? 'My foods' : 'From a label'}` : (a === 'lbl-save' ? 'My foods' : 'From a label'), p:food.p, servingG:food.servingG, servingD:food.servingD}, food.servingG)], {quiet:a === 'lbl-save'});
+      S.lbl = null; renderTypeExtra(); break; }
+    case 'menu-add': {
+      const it = findMenuItem(b.dataset.id, b.dataset.ctx); if (!it) break;
+      const sel = b.closest('li')?.querySelector('[data-menu-size]');
+      const pi = menuPlateItem(it, sel ? Number(sel.value) : 0); if (!pi) break;
+      if (b.dataset.ctx === 'eo') { S.plate.push(pi); setTab('scan'); toast(`Added ${pi.name} to your plate`); } else addToPlate([pi]);
+      break; }
+    case 'rest-open': S.rest.open = true; renderPhoto(); break;
+    case 'rest-yes': S.rest.manual = b.dataset.k; S.rest.ask = null; updateRestaurant(); break;
+    case 'rest-no': S.rest.no = true; S.rest.ask = null; renderPhoto(); break;
+    case 'rest-clear': S.rest = {...S.rest, chain:null, manual:null, no:true, ask:null, filter:''}; renderPhoto(); break;
+    case 'eo-go': eoGo(); break;
+    case 'eo-photo': pickImage(f => eoPhoto(f), !!b.dataset.cam); break;
+    case 'eo-clear-menu': S.eo.menu = null; renderMeals(); break;
+    case 'eo-log': { const c = S.eo.sg?.[b.dataset.list]?.[Number(b.dataset.i)]; if (c) logCombo(c); break; }
     /* water */
     case 'water-add': addWater(Number(b.dataset.oz)); break;
     case 'water-custom': { const v = num($('#water-custom').value); if (v) addWater(v); else $('#water-custom').focus(); break; }
@@ -2041,6 +2531,7 @@ document.addEventListener('click', e => {
     case 'r-parse': { const e = S.ml.edit, txt = $('#r-text').value.trim(); if (!txt) { $('#r-text').focus(); break; } e.text = txt; addRecipeText(txt, false); renderMeals(); break; }
     case 'r-add-usda': { const f = BYID.get(Number(b.dataset.ndb)); if (f && S.ml.edit) { const n = f.length, it = usdaItem(f[0], f[n-4] || 100, null, null); if (it) { S.ml.edit.items.push(it); renderMeals(); toast(`Added ${it.name}. Set the amount.`); } } break; }
     case 'r-add-label': { if (S.ml.edit) { const its = labelItems(b.dataset.label); S.ml.edit.items.push(...its); renderMeals(); } break; }
+    case 'r-add-my': { const f = S.myFoods.find(x => x.id === b.dataset.id); if (f && S.ml.edit) { S.ml.edit.items.push(servingItem({src:'custom', name:f.name, sub:'My foods', p:f.p, servingG:f.servingG, servingD:f.servingD}, f.servingG || 100)); renderMeals(); } break; }
     case 'r-water-add': S.ml.edit.water.push({id:uid(), g:240, text:''}); renderMeals(); break;
     case 'r-water-del': S.ml.edit.water = S.ml.edit.water.filter(w => w.id !== b.dataset.id); renderMeals(); break;
     case 'r-save': saveRecipe(); break;
@@ -2100,6 +2591,11 @@ document.addEventListener('input', e => {
     return;
   }
   if (t.id === 'r-search') { clearTimeout(searchT); searchT = setTimeout(runRSearch, 140); return; }
+  if (t.dataset.lbl && S.lbl?.form) { S.lbl.form[t.dataset.lbl] = t.value; if (['kcal', 'fat', 'carbs', 'protein'].includes(t.dataset.lbl)) { const f = S.lbl.form, est = 9 * num(f.fat) + 4 * num(f.carbs) + 4 * num(f.protein), el = $('#lbl-check'); if (el && num(f.kcal)) el.textContent = Math.abs(est - num(f.kcal)) / num(f.kcal) > 0.25 ? `⚠ Fat, carbs and protein add up to about ${int(est)} kcal, but the label says ${int(f.kcal)}.` : `✓ Adds up to about ${int(est)} kcal, close to the label’s ${int(f.kcal)}.`; } return; }
+  if (t.dataset.restFilter != null && t.matches('[data-rest-filter]')) { S.rest.filter = t.value; clearTimeout(searchT); searchT = setTimeout(() => { renderPhoto(); const el = $('[data-rest-filter]'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); return; }
+  if (t.id === 'eo-kcal') { S.eo.tKcal = t.value; clearTimeout(searchT); searchT = setTimeout(() => { renderMeals(); const el = $('#eo-kcal'); if (el) el.focus(); }, 600); return; }
+  if (t.id === 'eo-p') { S.eo.tP = t.value; clearTimeout(searchT); searchT = setTimeout(() => { renderMeals(); const el = $('#eo-p'); if (el) el.focus(); }, 600); return; }
+  if (t.id === 'eo-q') { S.eo.q = t.value; return; }
   if (t.dataset.rwater && ed) { const w = ed.water.find(x => x.id === t.dataset.rwater); if (w) { w.g = num(t.value); renderRecipeTotals(); } return; }
   if (ce && ['c-name', 'c-cap', 'c-empty'].includes(t.id)) { ce[{'c-name':'name', 'c-cap':'cap', 'c-empty':'empty'}[t.id]] = t.value; return; }
   if (L && t.id === 'pl-val') { L.val = t.value; renderPortionResult(); return; }
@@ -2143,6 +2639,9 @@ document.addEventListener('change', e => {
   if (t.id === 'cmp-a') { S.sp.cmpA = t.value; renderSports(); return; }
   if (t.id === 'cmp-b') { S.sp.cmpB = t.value; renderSports(); return; }
   if (t.id === 'set-creatine') { S.profile.creatine = t.checked; saveProfile(); return; }
+  if (t.id === 'set-fdc') { settings().fdcKey = t.value.trim(); saveProfile(); toast(t.value.trim() ? 'USDA key saved' : 'Using the shared USDA key'); return; }
+  if (t.matches('[data-rest-pick]')) { if (t.value) { S.rest.manual = t.value; S.rest.no = false; updateRestaurant(); } return; }
+  if (t.id === 'eo-q' && chainByName(t.value)) { eoGo(); return; }
   if (t.id === 'b-cycle') { S.profile.cycleStart = t.value; saveProfile(); return; }
   if (t.id === 'b-cyclelen') { S.profile.cycleLength = num(t.value) || ''; saveProfile(); return; }
   if (t.dataset.unit) {
@@ -2164,6 +2663,7 @@ document.addEventListener('change', e => {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   if (e.target.id === 'bc-code') { e.preventDefault(); lookupBarcode(e.target.value); }
+  else if (e.target.id === 'eo-q') { e.preventDefault(); eoGo(); }
   else if (e.target.id === 'water-custom') { e.preventDefault(); const v = num(e.target.value); if (v) addWater(v); }
   else if (e.target.id === 'sp-cq') { e.preventDefault(); $('[data-action="sp-cadd"]').click(); }
 });
@@ -2193,14 +2693,16 @@ async function boot(){
   DB = db; INDEX = buildIndex(db); BYID = new Map(db.foods.map(f => [f[0], f]));
   const vw = new Set(); const addW = n => String(n).toLowerCase().replace(/[^a-z]+/g, ' ').split(' ').forEach(w => w.length >= 3 && vw.add(w));
   db.foods.forEach(f => addW(f[1])); LABELS.forEach(l => addW(l[0])); PANTRY.forEach(x => addW(x[0]));
+  CHAINS.forEach(c => addW(c.name));
   setVocab([...vw]);
+  initRestaurants({foods:db.foods, byId:BYID, search:(q, n) => search(INDEX, q, n)});
   S.pantry.forEach(f => { if (f.src === 'usda' && !f.full && BYID.get(f.ndb)) f.full = BYID.get(f.ndb)[1]; });
   fillBodyForm();
   const h = (location.hash || '').slice(1);
   $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
   fillBodyForm();
-  setTab(['scan','body','week','pantry','meals','containers','sports'].includes(h) ? h : 'today');
+  setTab(['scan','body','week','pantry','meals','containers','eatout','sports'].includes(h) ? h : 'today');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Macro Lens couldn’t load its food data. Reload the page.</p>'; });
-window.__ml = {hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
+window.__ml = {pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
