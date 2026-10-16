@@ -12,8 +12,10 @@ import { parseDiet, applyDiet } from './diet.js';
 import { waterGoal, estimate, bloatLabel, COMPONENT_LABEL } from './water.js';
 import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, detectChain, chainByName, kindFromName, rankMenu, portionsOf, nutOf, suggest, parseMenuText, parseMenuWords, estimateMenuItem, stripChainName, menuRole } from './restaurants.js';
 import * as G from './gemini.js';
-import { GEMINI_PROXY, SHARED_DAILY_LIMIT } from './config.js';
-import { searchOnline, webSearchURL } from './online.js';
+import { GEMINI_PROXY as PROXY_SET, SHARED_DAILY_LIMIT } from './config.js';
+// the example address from the instructions isn't a real server
+const GEMINI_PROXY = /yourname\.workers\.dev/i.test(PROXY_SET) ? '' : String(PROXY_SET || '').trim();
+import { searchOnline, webSearchURL, setFdcKey } from './online.js';
 import { parseLabel, labelToP100 } from './label.js';
 import { WEIGH_POINTS, QUESTIONS, URINE, sportDefaults, hrMax, zoneOf, summarizeHR, connectHR, dayMetrics, feelScore, weekStats, replicate, COMPARE_ROWS } from './sports.js';
 
@@ -509,7 +511,7 @@ function offPlateItem(p){
   const opts = [];
   if (p.servingG) opts.push({t: tidy(p.servingSize) || '1 serving', g: p.servingG});
   opts.push({t:'1 oz', g:28.35}, {t:'100 g', g:100}, {t:'grams', g:1});
-  return {id:uid(), src:'off', code:p.code, name:displayName(p), sub:`${p.quantity ? p.quantity + ' · ' : ''}Open Food Facts`, p:offP100(p.nutriments), opts, opt:0, qty:1};
+  return {id:uid(), src:p.fdc ? 'fdc' : 'off', code:p.code, name:displayName(p), sub:`${p.quantity ? p.quantity + ' · ' : ''}${p.fdc ? 'USDA FoodData Central' : 'Open Food Facts'}`, p:offP100(p.nutriments), opts, opt:0, qty:1};
 }
 function offPantryFood(p){
   return {key:'off' + p.code, src:'off', code:p.code, name:displayName(p), p:offP100(p.nutriments), unitG:p.servingG || 0, unitD:p.servingG ? (tidy(p.servingSize) || '1 serving') : '', group:0,
@@ -2326,6 +2328,7 @@ const gmWords = () => { const st = S.gm.photo; return st && st.ph === S.photo &&
 function gemErrText(e){
   if (e && e.own) return e.message;
   if (e && e.shared && e.kind === 'key') return 'The app’s shared Gemini server isn’t working right now.';
+  if (e && e.shared && e.kind === 'net') return 'Couldn’t reach the app’s shared Gemini server.';
   if (e && e.shared && e.kind === 'rate' && e.daily) return 'The app’s free Gemini quota for today is used up. It resets at midnight Pacific time.';
   switch (e && e.kind) {
     case 'key': return 'Gemini didn’t accept your key. Check it in Body → Settings.';
@@ -2892,7 +2895,7 @@ document.addEventListener('change', e => {
   if (t.id === 'cmp-a') { S.sp.cmpA = t.value; renderSports(); return; }
   if (t.id === 'cmp-b') { S.sp.cmpB = t.value; renderSports(); return; }
   if (t.id === 'set-creatine') { S.profile.creatine = t.checked; saveProfile(); return; }
-  if (t.id === 'set-fdc') { settings().fdcKey = t.value.trim(); saveProfile(); toast(t.value.trim() ? 'USDA key saved' : 'Using the shared USDA key'); return; }
+  if (t.id === 'set-fdc') { settings().fdcKey = t.value.trim(); setFdcKey(settings().fdcKey); saveProfile(); toast(t.value.trim() ? 'USDA key saved' : 'Using the shared USDA key'); return; }
   if (t.id === 'set-gem') {
     const v = t.value.trim(); if (v === gemKey()) return;
     settings().gemKey = v; settings().gemInfo = null; G.forget(); saveProfile();
@@ -2959,7 +2962,7 @@ async function boot(){
   setVocab([...vw]);
   initRestaurants({foods:db.foods, byId:BYID, search:(q, n) => search(INDEX, q, n)});
   S.pantry.forEach(f => { if (f.src === 'usda' && !f.full && BYID.get(f.ndb)) f.full = BYID.get(f.ndb)[1]; });
-  fillBodyForm();
+  fillBodyForm(); setFdcKey(settings().fdcKey);
   const h = (location.hash || '').slice(1);
   $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
   fillBodyForm();

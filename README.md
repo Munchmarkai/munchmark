@@ -36,7 +36,7 @@ Each phone can paste its own free key in Body → Settings. To let every phone t
 6. On GitHub, edit `js/config.js` and paste the address between the quotes of `GEMINI_PROXY`. Commit.
 7. Open the app twice so it picks up the change. Body → Settings shows "This app has a shared Gemini server"; tap **Test**.
 
-How it's protected: the server only answers your app's site (`ALLOWED_ORIGINS`, default `https://athanbriggs-hub.github.io`; add more separated by commas, like an app-store build's address), only allows the cheap Flash-Lite models, limits each internet connection to `HOURLY_LIMIT` requests an hour (default 40), and each phone stops after `SHARED_DAILY_LIMIT` requests a day (60, in `js/config.js`). Every phone is asked once before anything is sent to Google, and can switch it off in Settings. A phone with its own key uses that instead.
+How it's protected: the server only answers your app's site (`ALLOWED_ORIGINS`, default `https://athanbriggs-ui.github.io` and `https://athanbriggs-hub.github.io`; add more separated by commas, like an app-store build's address), only allows the cheap Flash-Lite models, limits each internet connection to `HOURLY_LIMIT` requests an hour (default 40), and each phone stops after `SHARED_DAILY_LIMIT` requests a day (60, in `js/config.js`). Every phone is asked once before anything is sent to Google, and can switch it off in Settings. A phone with its own key uses that instead.
 
 All phones share your key's free daily quota (see your limits at aistudio.google.com/rate-limit). For more users, turn on billing (Flash-Lite costs roughly a dollar per thousand photos, and paid-tier data isn't used to train Google's models) and set a budget alert in Google Cloud. Google's Gemini API terms require users to be 18 or older and don't allow apps aimed at or likely used by people under 18, and only the paid tier may be offered to people in the EU, UK or Switzerland.
 
@@ -55,6 +55,6 @@ Open the site in Chrome, tap the ⋮ menu, then **Add to home screen → Install
 - Restaurant items: USDA's analyses of chain restaurant food in SR28 (2010s); chains change recipes, so treat them as close estimates.
 - Scale displays: the seven-segment model `ssd_int` from [tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) (Apache-2.0), bundled in `vendor/tesseract/`.
 - Optional recognition: [Google Gemini API](https://ai.google.dev) with your own key ([terms](https://ai.google.dev/gemini-api/terms)). Search suggestions from Google are shown with grounded answers.
-- Product search: Open Food Facts [Search-a-licious](https://search.openfoodfacts.org) API, falling back to the classic search API; requests are rate-limited and cached on the phone.
+- Product search: Open Food Facts [Search-a-licious](https://search.openfoodfacts.org) API, falling back to the classic search API and then to USDA FoodData Central branded labels when Open Food Facts search is unavailable; requests are rate-limited and cached on the phone.
 
 Estimates are for tracking, not medical advice. Web apps can't read Samsung Health, Health Connect or Apple Health directly; that needs an app-store version.

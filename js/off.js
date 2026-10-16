@@ -66,12 +66,14 @@ export function normalize(p){
 }
 const tagText = t => String(t).replace(/^[a-z]{2}:/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-export async function searchProducts(q){
+// fallback: when Open Food Facts search is down or refusing this connection, USDA FoodData Central's
+// branded labels (most US packages) stand in, in the same shape
+export async function searchProducts(q, {fallback = true} = {}){
   q = String(q || '').trim().toLowerCase();
   if (!q) return [];
   const c = C(), hit = c.q[q];
   if (hit && Date.now() - hit.t < FRESH) return hit.r;
-  let list = null;
+  let list = null, viaFdc = false;
   try {
     const u = `${SEARCH_URL}?q=${encodeURIComponent(q)}&langs=en&page_size=15&boost_phrase=true&fields=${SEARCH_FIELDS}`;
     const j = await limited('search', () => getJSON(u));
@@ -81,11 +83,26 @@ export async function searchProducts(q){
       const u = `${LEGACY_SEARCH}?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=${SEARCH_FIELDS}`;
       const j = await limited('search', () => getJSON(u, 15000));
       list = (j.products || []).map(normalize);
-    } catch (e2) { throw e2; }
+    } catch (e2) {
+      if (!fallback) throw e2;
+      const {searchFDC} = await import('./online.js');
+      list = (await searchFDC(q)).filter(f => f.dataType === 'Branded' || f.brand).map(fdcToOff);
+      viaFdc = true;
+    }
   }
   list = list.filter(x => x && x.code && x.name);
-  c.q[q] = {t: Date.now(), r: list}; saveCache();
+  // a stand-in answer is only kept for a day, so Open Food Facts gets asked again once it's back
+  c.q[q] = {t: viaFdc ? Date.now() - FRESH + 864e5 : Date.now(), r: list}; saveCache();
   return list;
+}
+function fdcToOff(f){
+  const p = f.p, d = (v, k) => (Number(v) || 0) / k;
+  return {code: f.upc ? String(f.upc) : 'fdc' + f.fdcId, name: f.name, brands: f.brand || '', quantity: '', categories: [], countries: ['en:united-states'], shapes: [], scans: 0,
+    servingSize: f.servingD || '', servingG: f.servingG || 0, image: '', fdc: true,
+    nutriments: {'energy-kcal_100g': p[0], proteins_100g: p[1], carbohydrates_100g: p[2], fat_100g: p[3], fiber_100g: p[4], sugars_100g: p[5], 'saturated-fat_100g': p[6],
+      cholesterol_100g: d(p[7], 1000), sodium_100g: d(p[8], 1000), potassium_100g: d(p[9], 1000), calcium_100g: d(p[10], 1000), iron_100g: d(p[11], 1000),
+      magnesium_100g: d(p[12], 1000), zinc_100g: d(p[13], 1000), 'vitamin-a_100g': d(p[14], 1e6), 'vitamin-c_100g': d(p[15], 1000), 'vitamin-d_100g': d(p[16], 1e6),
+      'vitamin-b12_100g': d(p[17], 1e6), 'vitamin-b9_100g': d(p[18], 1e6), water_100g: p[19]}};
 }
 
 export async function getProduct(code){

@@ -10,7 +10,7 @@
 // Keep billing OFF on the Google project behind the key: then nobody can run up a bill,
 // the worst case is the free daily quota running out and the app falling back to on-device recognition.
 
-const DEFAULT_ORIGINS = 'https://athanbriggs-hub.github.io';
+const DEFAULT_ORIGINS = 'https://athanbriggs-ui.github.io, https://athanbriggs-hub.github.io';
 const MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest']);
 const MAX_BYTES = 8 * 1024 * 1024;
 const hits = new Map();   // per-connection counts, best effort (each Cloudflare server keeps its own)

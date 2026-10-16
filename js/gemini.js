@@ -54,7 +54,7 @@ async function post(key, proxy, model, body, timeoutMs){
     let j = null; try { j = await r.json(); } catch {}
     return {status:r.status, ok:r.ok, j};
   } catch (e) {
-    throw new GeminiError('net', e && e.name === 'AbortError' ? 'Gemini took too long to answer.' : 'Couldn’t reach Gemini.');
+    throw new GeminiError('net', e && e.name === 'AbortError' ? 'Gemini took too long to answer.' : 'Couldn’t reach Gemini.', {shared:!key});
   } finally { clearTimeout(t); }
 }
 

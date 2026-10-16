@@ -9,7 +9,9 @@ const NUM = {'208':0,'203':1,'205':2,'204':3,'291':4,'269':5,'606':6,'601':7,'30
 const toks = s => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').split(' ').filter(w => w.length >= 2 && !/^(and|the|with|of|in)$/.test(w));
 const title = s => String(s || '').toLowerCase().replace(/\b([a-z])([a-z']*)/g, (m, a, b) => a.toUpperCase() + b).replace(/\b(Oz|Fl|Pk|Ct)\b/g, x => x.toLowerCase());
 
-let blockedUntil = 0;
+let blockedUntil = 0, defaultKey = '';
+// the person's own api.data.gov key from Settings, used when a caller doesn't pass one
+export function setFdcKey(k){ defaultKey = String(k || '').trim(); }
 const CK = 'macrolens.fdccache.v1';
 function cacheGet(k){ try { const c = JSON.parse(localStorage.getItem(CK) || '{}'), e = c[k]; return e && Date.now() - e.t < 7 * 864e5 ? e.v : null; } catch { return null; } }
 function cacheSet(k, v){
@@ -39,7 +41,7 @@ export function fdcItem(f){
   return {src:'fdc', id:'fdc' + f.fdcId, fdcId:f.fdcId, dataType:f.dataType, name:title(f.description), brand:title(f.brandName || f.brandOwner || ''), upc:f.gtinUpc || '',
     servingG:sg, servingD:sg ? (hh && !/^\d+(\.\d+)?\s*(g|ml)$/i.test(hh) ? `${hh.toLowerCase()} (${Math.round(sg)} ${unit.startsWith('m') ? 'ml' : 'g'})` : `${Math.round(sg)} ${unit.startsWith('m') ? 'ml' : 'g'}`) : '', p};
 }
-export async function searchFDC(q, key){
+export async function searchFDC(q, key = defaultKey){
   const k = (key ? 'k:' : 'd:') + q.toLowerCase().trim();
   const hit = cacheGet(k); if (hit) return hit;
   if (Date.now() < blockedUntil) throw new Error('rate');
@@ -61,7 +63,7 @@ export function offItem(p){
 export async function searchOnline(q, {fdcKey = '', fdc = true} = {}){
   const errors = []; let a = [], b = [];
   await Promise.all([
-    searchProducts(q).then(r => { a = r.map(offItem); }).catch(() => errors.push('off')),
+    searchProducts(q, {fallback:false}).then(r => { a = r.map(offItem); }).catch(() => errors.push('off')),
     fdc ? searchFDC(q, fdcKey).then(r => { b = r; }).catch(e => errors.push(e.message === 'rate' ? 'fdc-rate' : 'fdc')) : Promise.resolve(),
   ]);
   const qt = toks(q);
