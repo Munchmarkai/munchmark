@@ -10,7 +10,9 @@ import { scan as packScan, setVocab, readScale, readText, readWords, brandOf } f
 import { roleFromCategories } from './brands.js';
 import { parseDiet, applyDiet } from './diet.js';
 import { waterGoal, estimate, bloatLabel, COMPONENT_LABEL } from './water.js';
-import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, detectChain, chainByName, kindFromName, rankMenu, portionsOf, nutOf, suggest, parseMenuText, parseMenuWords, estimateMenuItem, stripChainName } from './restaurants.js';
+import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, detectChain, chainByName, kindFromName, rankMenu, portionsOf, nutOf, suggest, parseMenuText, parseMenuWords, estimateMenuItem, stripChainName, menuRole } from './restaurants.js';
+import * as G from './gemini.js';
+import { GEMINI_PROXY, SHARED_DAILY_LIMIT } from './config.js';
 import { searchOnline, webSearchURL } from './online.js';
 import { parseLabel, labelToP100 } from './label.js';
 import { WEIGH_POINTS, QUESTIONS, URINE, sportDefaults, hrMax, zoneOf, summarizeHR, connectHR, dayMetrics, feelScore, weekStats, replicate, COMPARE_ROWS } from './sports.js';
@@ -81,6 +83,7 @@ const S = {
   desc:{text:'', applied:null, online:null}, rest:{chain:null, src:'', ask:null, manual:null, no:false, filter:''},
   eo:{q:'', chain:null, kind:null, menu:null, busy:false, step:'', err:'', tKcal:'', tP:''},
   myFoods:[], online:{q:'', busy:false, items:null, errors:[]}, lbl:null,
+  gm:{photo:null, type:null},
 };
 let DB = null, INDEX = null, BYID = null, R = null;
 
@@ -313,7 +316,8 @@ function renderPhoto(){
   let html = '';
   const pkFound = p && !S.pk.busy && S.pk.res && S.pk.res.items.length;
   let recNote = '';
-  if (r.state === 'missing' || r.state === 'error') {
+  const gmSt = p && S.gm.photo && S.gm.photo.ph === p ? S.gm.photo : null, gmHas = !!gmSt?.items?.length;
+  if ((r.state === 'missing' && !gemOn() && !sharedAsk()) || r.state === 'error') {
     const box = `<div class="recbox"><span><b>${pkFound ? 'Not a packaged food?' : 'Food recognizer'}</b><br><span class="sub">${r.state === 'error' ? esc(r.error) : pkFound ? 'For home-cooked or restaurant meals, download the food recognizer once (about 150 MB, Wi-Fi).' : 'Packaged foods are read from the label. For meals and fresh food, download the recognizer once (about 150 MB, Wi-Fi recommended); then it works offline.'}</span></span>
       <button type="button" class="btn ${pkFound ? 'ghost' : 'primary'}" data-action="rec-download">${r.state === 'error' ? 'Try again' : 'Download recognizer'}</button></div>`;
     if (pkFound) recNote = box; else html = box;
@@ -328,15 +332,20 @@ function renderPhoto(){
   const pkItems = p && !pk.busy && pk.res ? pk.res.items.slice(0, 3) : [];
   const rHTML = restHTML();
   const dEl = $('#desc-out'); if (dEl) dEl.innerHTML = descOutHTML();
-  const pkHTML = pkItems.length ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
+  // Gemini's label-data matches cover the packaged section, so it only shows when they don't
+  const pkHTML = pkItems.length && (!gmHas || gmSt.items.some(x => x.kind === 'packaged' && !x.db)) ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
+  const gmHTML = gmSectionHTML(gmSt, 'photo', 'Gemini sees');
   const restLink = S.photo && !S.rest.chain && !S.rest.ask && !S.rest.open ? '<p class="fine"><button type="button" class="linkbtn" data-action="rest-open">From a restaurant? Pick it for its menu</button></p>' : '';
-  if (!r.results || r.busy) { $('#rec-results').innerHTML = rHTML + pkHTML + recNote + (p && !pk.busy ? restLink : ''); return; }
+  // when Gemini already named the restaurant items, the chain's USDA menu is a fallback, so it folds away
+  const restHTML2 = gmHas && rHTML && S.rest.chain ? `<details class="help"><summary>More from the ${esc(CHAIN_BY[S.rest.chain].name)} menu (USDA numbers)</summary>${rHTML}</details>` : rHTML;
+  if (!r.results || r.busy) { $('#rec-results').innerHTML = gmHTML + restHTML2 + pkHTML + recNote + (p && !pk.busy ? restLink : ''); return; }
   const unsure = r.results[0].p < 0.3;
-  $('#rec-results').innerHTML = rHTML + pkHTML + `<div class="sec"><div class="sec-head"><h2 class="h">${unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
+  const clipHTML = `<div class="sec"><div class="sec-head"><h2 class="h">${gmHas ? 'On-device guesses' : unsure ? 'Best guesses' : 'Looks like'}</h2><button type="button" class="linkbtn" data-action="mode" data-mode="type">Not here? Type it</button></div>
     ${pkItems.length ? '<p class="fine">Not packaged? These are the closest dishes.</p>' : unsure ? '<p class="fine">Not sure about this one. Pick the closest match, or type it in.</p>' : ''}
     <ul class="guesses">${r.results.map(g => { const L = labelByName(g.label); const on = r.added.has(g.label);
       return `<li class="guess ${on ? 'added' : ''}"><span><b>${esc(cap(g.label))}</b><small>${esc(L[2])} · ${int(labelKcal(L))} kcal</small><span class="pct"><i style="width:${Math.max(3, Math.round(g.p * 100))}%"></i></span></span>
-        <button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="guess-add" data-label="${esc(g.label)}">${on ? 'Added' : 'Add'}</button></li>`; }).join('')}</ul>${S.desc.applied?.portion ? `<p class="fine">Adding uses your portion: “${esc(S.desc.applied.portion)}”.</p>` : ''}</div>` + restLink;
+        <button type="button" class="btn ${on ? 'ghost' : 'primary'} sm" data-action="guess-add" data-label="${esc(g.label)}">${on ? 'Added' : 'Add'}</button></li>`; }).join('')}</ul>${S.desc.applied?.portion ? `<p class="fine">Adding uses your portion: “${esc(S.desc.applied.portion)}”.</p>` : ''}</div>`;
+  $('#rec-results').innerHTML = gmHTML + restHTML2 + pkHTML + (gmHas ? `<details class="help"><summary>On-device guesses</summary>${clipHTML}</details>` : clipHTML) + restLink;
 }
 // one editable food row (amount, unit, closer-match picker); used by the plate and the meal builder
 function itemRowHTML(it){
@@ -348,7 +357,7 @@ function itemRowHTML(it){
       <div class="qty"><button type="button" data-action="qty" data-id="${it.id}" data-d="-1" aria-label="Less">−</button>
         <input type="number" inputmode="decimal" step="any" min="0" value="${esc(it.qty)}" data-qty="${it.id}" aria-label="Amount">
         <button type="button" data-action="qty" data-id="${it.id}" data-d="1" aria-label="More">+</button>
-        <select data-unit="${it.id}" aria-label="Unit">${it.opts.map((o, i) => `<option value="${i}" ${i === it.opt ? 'selected' : ''}>${esc(o.t)}${o.t === 'grams' || / g$/.test(o.t) ? '' : ` (${dec(o.g)} g)`}</option>`).join('')}</select></div>
+        <select data-unit="${it.id}" aria-label="Unit">${it.opts.map((o, i) => `<option value="${i}" ${i === it.opt ? 'selected' : ''}>${esc(o.t)}${o.t === 'grams' || / g$/.test(o.t) || /\(\s*[\d.]+\s*(g|ml)\s*\)/i.test(o.t) ? '' : ` (${dec(o.g)} g)`}</option>`).join('')}</select></div>
       ${alts.length ? `<select class="alt" data-alt="${it.id}" aria-label="Change food"><option value="">Not quite right? Pick a closer match…</option>${alts.map(f => `<option value="${f[0]}">${esc(shortName(f[1]))} · ${int(f[3])} kcal/100 g</option>`).join('')}</select>` : ''}
     </li>`;
 }
@@ -454,8 +463,10 @@ async function setPhoto(file){
     if (S.photo) URL.revokeObjectURL(S.photo.url);
     S.photo = p; S.rec.results = null; S.rec.added = new Set();
     S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''};
+    S.gm.photo = sharedAsk() ? {ph:p, consent:true} : null;
     renderPhoto();
     runPackaged();
+    if (gemOn()) geminiPhoto();
     if (S.rec.state === 'ready') classifyPhoto();
   } catch { toast('Couldn’t open that photo. Try a JPEG or PNG.'); }
 }
@@ -591,7 +602,8 @@ async function runPackaged(){
 async function typeAdd(){
   const text = $('#type-in').value.trim(), msg = $('#type-msg');
   if (!text) { $('#type-in').focus(); return; }
-  const items = [], missing = [], online = [];
+  const items = [], missing = [], online = [], ask = [];   // ask: what Gemini gets when the app can't find it
+  const gem = gemOn() || sharedAsk();
   for (const chunk of text.split(/[;\n,]+/).map(x => x.trim()).filter(Boolean)){
     const pt = pantryTagged(chunk);
     if (pt != null) { const it = pantryItemFor(pt); if (it) items.push(it); else missing.push(`${pt} (not in your pantry)`); continue; }
@@ -599,15 +611,18 @@ async function typeAdd(){
     if (!chainHere) { const mineAll = myFoodFor(chunk); if (mineAll) { items.push(mineAll); continue; } }
     if (!chainHere && brandOf(chunk)) { if (navigator.onLine) { online.push(chunk); continue; } }
     for (const seg of splitMeal(chunk)){
-      if (chainHere) { const ci = chainItemFor(seg, chainHere, true); if (ci) { items.push(ci); continue; } if (!nameWords(stripChainName(seg, chainHere)).length) continue; }
+      if (chainHere) { const ci = chainItemFor(seg, chainHere, true); if (ci) { items.push(ci); continue; } if (!nameWords(stripChainName(seg, chainHere)).length) continue; if (gem) { ask.push(/\b(from|at)\b/i.test(seg) || detectChain(seg) ? seg : `${seg} from ${chainHere.name}`); continue; } }
       const mine = myFoodFor(seg); if (mine) { items.push(mine); continue; }
       const r = parseSegment(seg, INDEX, BYID);
       if (!r) continue;
-      if (r.missing) { missing.push(r.text); continue; }
+      if (r.missing) { if (gem) ask.push(r.text); else missing.push(r.text); continue; }
       items.push(...itemsFromParsed(r));
     }
   }
-  const show = () => { msg.hidden = !missing.length; msg.className = 'err'; msg.textContent = missing.length ? `Couldn’t find: ${missing.join(', ')}. Try the search below, or search online.` : ''; };
+  const show = () => {
+    msg.hidden = !missing.length && !ask.length; msg.className = missing.length ? 'err' : 'notice';
+    msg.textContent = [missing.length ? `Couldn’t find: ${missing.join(', ')}. Try the search below, or search online.` : '', ask.length ? `Not in the app’s list: ${ask.join(', ')}. Asked Gemini below.` : ''].filter(Boolean).join(' ');
+  };
   show();
   if (items.length) { addToPlate(items); $('#type-in').value = ''; }
   for (const seg of online){
@@ -616,13 +631,14 @@ async function typeAdd(){
       const {q, items:res} = await lookupOnline(seg);
       const top = res[0];
       if (top && top.score >= 0.8) { const it = onlinePlateItem(top, seg); addToPlate([it]); rememberOnline(top); $('#type-in').value = ''; }
-      else { S.online = {q, busy:false, items:res, errors:[], seg}; renderTypeExtra(); missing.push(`${seg} (pick the right one below)`); }
+      else { S.online = {q, busy:false, items:res, errors:[], seg}; renderTypeExtra(); if (gem) ask.push(seg); else missing.push(`${seg} (pick the right one below)`); }
     } catch {
       const r = parseSegment(seg, INDEX, BYID);
-      if (r && !r.missing) addToPlate(itemsFromParsed(r)); else missing.push(seg);
+      if (r && !r.missing) addToPlate(itemsFromParsed(r)); else if (gem) ask.push(seg); else missing.push(seg);
     }
   }
   show();
+  if (ask.length) geminiText(ask.join(', '));
 }
 function rememberOnline(r){ addMyFood({name:r.name, brand:r.brand, servingG:r.servingG || 100, servingD:r.servingD || '100 g', p:r.p, src:'custom', from:r.src}); }
 let searchT = 0;
@@ -649,7 +665,7 @@ function fillBodyForm(){
   $('#b-neck').value = d.neck; $('#b-waist').value = d.waist; $('#b-hip').value = d.hip;
   $('#b-sport').value = d.sport; $('#b-days').value = String(d.trainingDays || 0);
   $('#set-wrapped').checked = wrappedOn();
-  $('#set-creatine').checked = !!p.creatine; const fk = $('#set-fdc'); if (fk) fk.value = (p.settings || {}).fdcKey || ''; $('#b-cycle').value = p.cycleStart || ''; $('#b-cyclelen').value = p.cycleLength || '';
+  $('#set-creatine').checked = !!p.creatine; const fk = $('#set-fdc'); if (fk) fk.value = (p.settings || {}).fdcKey || ''; const gk = $('#set-gem'); if (gk) gk.value = (p.settings || {}).gemKey || ''; renderGemStatus(); $('#b-cycle').value = p.cycleStart || ''; $('#b-cyclelen').value = p.cycleLength || '';
   syncSex();
 }
 function syncSex(){ $$('[data-action="sex"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.sex === S.draft.sex))); $('#hip-field').hidden = S.draft.sex === 'male'; $('#cycle-fields').hidden = S.draft.sex !== 'female'; }
@@ -788,7 +804,8 @@ function saveBodyFat(){
 
 /* ---------- backup ---------- */
 function exportBackup(){
-  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:S.profile, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
+  // the Gemini key stays on this phone and out of backup files
+  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:{...S.profile, settings:{...(S.profile.settings || {}), gemKey:undefined, gemInfo:undefined}}, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
   a.download = `macro-lens-backup-${dayKey()}.json`;
@@ -802,7 +819,7 @@ async function importBackup(file){
     if (!j || j.app !== 'macro-lens' || typeof j.days !== 'object') throw 0;
     let n = 0;
     for (const [k, v] of Object.entries(j.days)) { if (v && v.date === k && Array.isArray(v.entries)) { S.days[k] = v; saveDay(k); n++; } }
-    if (j.profile && typeof j.profile === 'object') { S.profile = j.profile; saveProfile(); fillBodyForm(); }
+    if (j.profile && typeof j.profile === 'object') { const keep = {gemKey:settings().gemKey, gemInfo:settings().gemInfo}; S.profile = j.profile; if (keep.gemKey) Object.assign(settings(), keep); saveProfile(); fillBodyForm(); }
     if (Array.isArray(j.pantry)) { S.pantry = j.pantry; savePantry(); }
     if (Array.isArray(j.recipes)) { S.recipes = j.recipes; saveRecipes(); }
     if (Array.isArray(j.containers)) { S.containers = j.containers; saveContainers(); }
@@ -2060,6 +2077,7 @@ function portionPick(it, text){
 function menuPlateItem(it, i = 0){
   const po = portionsOf(it)[i] || portionsOf(it)[0];
   const chain = it.chain ? CHAIN_BY[it.chain] : null;
+  if (it.ai) return servingItem({src:'ai', name:it.name, sub:`${chain ? chain.name : it.place ? it.place : 'Menu'} · Gemini · ${SRC_WORD[it.src] || 'estimate'}`, p:it.p, servingG:po.g, servingD:po.t}, po.g, po.t);
   const pi = usdaItem(it.ndb, po.g, it.name, po.t);
   if (!pi) return null;
   pi.sub = chain && !it.generic ? `${chain.name} · USDA` : it.estimated ? `Estimated from ${it.basedOn}` : 'Typical version · USDA';
@@ -2133,7 +2151,19 @@ function photoGuessItems(label){
 async function applyDesc(){
   const text = ($('#photo-desc')?.value || '').trim();
   S.desc.text = text;
-  if (!text) { S.desc.applied = null; S.desc.online = null; renderPhoto(); return; }
+  if (!text) { S.desc.applied = null; S.desc.online = null; renderPhoto(); if (S.photo && gemOn()) geminiPhoto(); return; }
+  // with Gemini, the details go along with the photo; "(pantry)" items still come from your pantry
+  if (S.photo && gemOn()) {
+    const plate = [], missing = [];
+    for (const c of text.split(/[,;\n]+/).map(x => x.trim()).filter(Boolean)){ const pt = pantryTagged(c); if (pt == null) continue; const it = pantryItemFor(pt); if (it) plate.push(it); else missing.push(`${pt} (no pantry match)`); }
+    S.desc.applied = {plate, missing, portion:null, hint:gemNote(), brandSegs:[], notes:plate.map(i => `${i.name} from your pantry`), gem:true};
+    S.desc.online = null;
+    if (plate.length) addToPlate(plate, {quiet:true});
+    if (!S.pk.busy) runPackaged();
+    geminiPhoto();
+    toast(S.desc.applied.hint ? 'Asking Gemini again with your details' : 'Added from your pantry');
+    return;
+  }
   const a = analyzeDesc(text);
   S.desc.applied = a;
   if (a.plate.length) addToPlate(a.plate, {quiet:true});
@@ -2155,7 +2185,7 @@ function descOutHTML(){
   if (!a && !o) return '';
   let html = '';
   if (a) {
-    const parts = [...a.notes.map(n => `<span>${esc(n)}</span>`), a.portion ? `<span>Portion: ${esc(a.portion)}</span>` : '', a.hint ? `<span>Label search: “${esc(a.hint)}”</span>` : '', ...a.missing.map(m => `<span class="unk">${esc(m)}</span>`)].filter(Boolean);
+    const parts = [...a.notes.map(n => `<span>${esc(n)}</span>`), a.portion ? `<span>Portion: ${esc(a.portion)}</span>` : '', a.hint ? `<span>${a.gem ? 'Sent to Gemini with the photo' : 'Label search'}: “${esc(a.hint)}”</span>` : '', ...a.missing.map(m => `<span class="unk">${esc(m)}</span>`)].filter(Boolean);
     if (parts.length) html += `<div class="dietsum">${parts.join('')}</div>`;
   }
   if (o) {
@@ -2174,7 +2204,7 @@ function onlineRowHTML(r, i, ctx){
 /* ---------- restaurant packaging in the photo ---------- */
 async function updateRestaurant(){
   const ph = S.photo, R = S.rest;
-  const words = [S.pk.res?.text || '', S.desc.text || ''].join(' ');
+  const words = [S.pk.res?.text || '', S.desc.text || '', gmWords()].join(' ');
   let chain = R.manual ? CHAIN_BY[R.manual] : detectChain(words), src = R.manual ? 'picked' : chain ? 'text' : '', ask = null;
   if (!chain && ph && !R.no && S.rec.state === 'ready') {
     try {
@@ -2203,7 +2233,7 @@ function restHTML(){
       : '';
   }
   const chain = CHAIN_BY[R.chain], menu = menuFor(R.chain);
-  const words = [S.pk.res?.text || '', S.desc.text || ''].join(' ');
+  const words = [S.pk.res?.text || '', S.desc.text || '', gmWords()].join(' ');
   let list = rankMenu(menu, {words, guesses:S.rec.results || []}).filter(x => x.role !== 'part');
   if (R.filter) { const q = tokens(R.filter); list = list.filter(it => q.every(t => tokens(it.full).some(x => x.startsWith(t)))); }
   return `<div class="sec"><div class="sec-head"><h2 class="h">${esc(chain.name)}</h2><button type="button" class="linkbtn" data-action="rest-clear">Not ${esc(chain.name)}?</button></div>
@@ -2259,7 +2289,8 @@ function labelFood(){
 function renderTypeExtra(){
   const el = $('#type-extra'); if (!el) return;
   const o = S.online;
-  let html = labelCardHTML();
+  const gb = $('#gm-type-btn'); if (gb) gb.hidden = !(gemOn() || sharedAsk());
+  let html = labelCardHTML() + gmSectionHTML(S.gm.type, 'type', 'Gemini found');
   if (o.busy) html += `<div class="recbox"><span><span class="spin"></span> <b>Searching online for “${esc(o.q)}”…</b></span></div>`;
   else if (o.items) {
     const errs = [o.errors.includes('fdc-rate') ? 'USDA’s shared key is busy right now; add your own free key in Body → Settings.' : o.errors.includes('fdc') ? 'USDA FoodData Central didn’t answer.' : '', o.errors.includes('off') ? 'Open Food Facts didn’t answer.' : ''].filter(Boolean);
@@ -2277,6 +2308,174 @@ async function runOnline(q){
   try { const r = await searchOnline(q, {fdcKey:settings().fdcKey || ''}); S.online = {q, busy:false, items:r.items, errors:r.errors}; }
   catch { S.online = {q, busy:false, items:[], errors:['off', 'fdc']}; }
   renderTypeExtra();
+}
+
+/* ---------- Gemini (optional, with the person's own free key) ---------- */
+const gemKey = () => String(settings().gemKey || '').trim();
+// 'key': this phone's own key · 'shared': the app's shared server from config.js · '': neither
+const gemMode = () => gemKey() ? 'key' : GEMINI_PROXY ? 'shared' : '';
+const gemAuth = () => gemKey() ? {key:gemKey()} : {proxy:GEMINI_PROXY, limit:SHARED_DAILY_LIMIT};
+// with the shared server, nothing goes to Google until the person says yes once
+const sharedAsk = () => gemMode() === 'shared' && settings().gemShared == null && navigator.onLine;
+const gemOn = () => navigator.onLine && (gemMode() === 'key' || (gemMode() === 'shared' && settings().gemShared === true));
+const SRC_WORD = {label:'read from the label', official:'published numbers', menu:'calories from the menu', estimate:'estimate'};
+const SRC_TAG = {label:'Label', official:'Published', menu:'Menu', estimate:'Estimate'};
+async function photoB64(file, max){ return (await smallPhoto(file, max)).split(',')[1]; }
+const portionLabel = s => String(s || '').replace(/\s*\(\s*\d+(\.\d+)?\s*(g|ml)\s*\)\s*$/i, '').trim() || String(s || '1 serving');
+const gmWords = () => { const st = S.gm.photo; return st && st.ph === S.photo && st.items ? st.items.map(x => `${x.restaurant} ${x.name}`).join(' ') : ''; };
+function gemErrText(e){
+  if (e && e.own) return e.message;
+  if (e && e.shared && e.kind === 'key') return 'The app’s shared Gemini server isn’t working right now.';
+  if (e && e.shared && e.kind === 'rate' && e.daily) return 'The app’s free Gemini quota for today is used up. It resets at midnight Pacific time.';
+  switch (e && e.kind) {
+    case 'key': return 'Gemini didn’t accept your key. Check it in Body → Settings.';
+    case 'rate': return e.daily ? 'Gemini’s free daily limit is used up. It resets at midnight Pacific time.' : 'Gemini got too many requests this minute. Try again shortly.';
+    case 'region': return 'Gemini isn’t available where you are.';
+    case 'blocked': return 'Gemini wouldn’t look at this one.';
+    case 'net': return `${e.message} Check your connection.`;
+    case 'server': return 'Gemini is busy right now. Try again in a minute.';
+    default: return 'Gemini couldn’t answer this time.';
+  }
+}
+// remember which model answered, for Settings
+function noteModel(r){ const i = settings().gemInfo; if (!i || i.model !== r.model || i.search !== r.search) { settings().gemInfo = {model:r.model, search:r.search, t:Date.now()}; saveProfile(); } }
+const gmName = x => { const by = x.restaurant || x.brand; return by && !x.name.toLowerCase().includes(by.toLowerCase().replace(/[’']s$/, '')) ? `${by} ${x.name}` : x.name; };
+const dbGrams = x => x.gramsKnown ? x.grams : (x.db.servingG || 100);
+const rowNut = x => x.db && x.useDb ? {kcal:x.db.p[0] * dbGrams(x) / 100, protein:x.db.p[1] * dbGrams(x) / 100, carbs:x.db.p[2] * dbGrams(x) / 100, fat:x.db.p[3] * dbGrams(x) / 100} : x;
+function gmPlateItem(x){
+  if (x.db && x.useDb) { const it = onlinePlateItem(x.db, x.gramsKnown ? `${x.grams} g` : ''); it.name = gmName(x); it.sub = `${it.sub} label data · matched by Gemini`; return it; }
+  const by = x.restaurant || x.brand;
+  return servingItem({src:'ai', name:gmName(x), sub:`${by ? by + ' · ' : ''}Gemini · ${SRC_WORD[x.source]}`, p:x.p, servingG:x.grams, servingD:portionLabel(x.portion)}, x.grams, portionLabel(x.portion));
+}
+function groundingHTML(g){
+  if (!g) return '';
+  const src = g.sources.length ? `<p class="fine gm-src">Sources: ${g.sources.map(s => `<a href="${esc(s.uri)}" target="_blank" rel="noopener">${esc(s.title)}</a>`).join(', ')}</p>` : '';
+  // Google asks apps that use Search grounding to show its search suggestions with the answer
+  return (g.entry ? `<iframe class="gm-sugg" title="Google Search suggestions" sandbox="allow-popups allow-popups-to-escape-sandbox" srcdoc="${esc('<base target="_blank">' + g.entry)}"></iframe>` : '') + src;
+}
+function gmRowHTML(x, i, ctx, added){
+  const n = rowNut(x), dbK = x.db ? x.db.p[0] * dbGrams(x) / 100 : 0;
+  return `<li class="guess gmrow ${added ? 'added' : ''}"><span><b>${esc(gmName(x))}</b>
+      <small class="tnum">${esc(portionLabel(x.portion))}${x.gramsKnown && !/\d\s*(g|ml)\b/i.test(portionLabel(x.portion)) ? ` · ${int(x.grams)} ${x.kind === 'drink' ? 'ml' : 'g'}` : ''} · ${int(n.kcal)} kcal · P ${dec(n.protein)} · C ${dec(n.carbs)} · F ${dec(n.fat)}</small>
+      <small><span class="tag">${x.db && x.useDb ? 'Label data' : SRC_TAG[x.source]}</span>${x.conf === 'low' ? 'Not sure. Check this one.' : x.conf === 'medium' && x.source === 'estimate' ? 'Estimated portion' : ''}</small>
+      ${x.db ? `<select class="alt" data-gm-src="${ctx}:${i}" aria-label="Which numbers"><option value="db" ${x.useDb ? 'selected' : ''}>${x.db.src === 'fdc' ? 'USDA' : 'Open Food Facts'} label data · ${int(dbK)} kcal</option><option value="ai" ${x.useDb ? '' : 'selected'}>Gemini’s numbers · ${int(x.kcal)} kcal</option></select>` : ''}</span>
+    <button type="button" class="btn ${added ? 'ghost' : 'primary'} sm" data-action="gm-add" data-ctx="${ctx}" data-i="${i}">${added ? 'Added' : 'Add'}</button></li>`;
+}
+function gmSectionHTML(st, ctx, title){
+  if (!st) return '';
+  if (st.consent) return consentHTML(ctx);
+  if (st.busy) return `<div class="recbox"><span><span class="spin"></span> <b>${esc(st.step || 'Asking Gemini…')}</b></span></div>`;
+  if (st.err) return `<p class="notice">${esc(st.err)}${ctx === 'photo' ? ' The on-device results are below.' : ''} <button type="button" class="linkbtn" data-action="gm-retry" data-ctx="${ctx}">Try again</button></p>`;
+  if (!st.items.length) return `<p class="notice">${esc(st.notes || (ctx === 'photo' ? 'Gemini didn’t see any food in this photo.' : 'Gemini didn’t find a food in that.'))}</p>`;
+  const left = st.items.map((x, i) => i).filter(i => !st.added.has(i));
+  const tot = left.reduce((a, i) => a + rowNut(st.items[i]).kcal, 0);
+  return `<div class="sec gm"><div class="sec-head"><h2 class="h">${esc(title)}</h2><span class="sub">${esc(G.modelName(st.model))}${st.search ? ' · Google Search' : ''}</span></div>
+    <ul class="guesses">${st.items.map((x, i) => gmRowHTML(x, i, ctx, st.added.has(i))).join('')}</ul>
+    ${st.items.length > 1 && left.length ? `<button type="button" class="btn primary wide" data-action="gm-add-all" data-ctx="${ctx}">Add ${left.length === st.items.length ? 'all' : 'the rest'} · ${int(tot)} kcal</button>` : ''}
+    ${st.notes ? `<p class="fine">${esc(st.notes)}</p>` : ''}
+    ${st.cut ? '<p class="fine">Gemini’s answer was cut short, so a food may be missing.</p>' : ''}
+    ${groundingHTML(st.grounding)}</div>`;
+}
+// packaged items: look the product up in Open Food Facts / USDA so the label's exact numbers can be used
+async function labelMatch(st, done){
+  for (const x of st.items.filter(x => x.brand && x.kind === 'packaged').slice(0, 3)){
+    try {
+      const rest = x.name.replace(new RegExp(x.brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), ' ').replace(/\s+/g, ' ').trim();
+      const {items} = await searchOnline(`${x.brand} ${rest}`, {fdcKey:settings().fdcKey || ''});
+      const top = items[0], bt = tokens(x.brand);
+      if (!top || top.score < 0.85 || !tokens(`${top.brand} ${top.name}`).some(t => bt.includes(t))) continue;
+      x.db = top;
+      const dbK = top.p[0] * dbGrams(x) / 100;
+      // the label's numbers win unless Gemini read them off this package itself or they disagree a lot
+      x.useDb = x.source !== 'label' && !(x.kcal && Math.abs(dbK - x.kcal) / x.kcal > 0.4);
+      done();
+    } catch {}
+  }
+}
+function consentHTML(ctx){
+  const what = ctx === 'photo' ? 'this photo and your details' : ctx === 'eo' ? 'menu photos and restaurant names' : 'what you typed';
+  return `<div class="recbox gm-ask"><span><b>Recognize with Google Gemini?</b><br><span class="sub">Macro Lens can send ${what} to Google Gemini, which is much better at brands, restaurant food and portions. Google may use what’s sent to improve its products, so don’t send anything private. You can change this in Body → Settings.</span></span>
+    <div class="row2"><button type="button" class="btn primary sm" data-action="gm-consent" data-v="1" data-ctx="${ctx}">Use Gemini</button><button type="button" class="btn ghost sm" data-action="gm-consent" data-v="0" data-ctx="${ctx}">Keep on-device</button></div></div>`;
+}
+function gemNote(){ return String($('#photo-desc')?.value ?? S.desc.text ?? '').split(/[,;\n]+/).map(x => x.trim()).filter(c => c && pantryTagged(c) == null).join(', ').slice(0, 400); }
+async function geminiPhoto(force = false){
+  const ph = S.photo; if (!ph) return;
+  if (!gemOn()) { if (sharedAsk()) { S.gm.photo = {ph, consent:true}; renderPhoto(); } return; }
+  const note = gemNote(), cur = S.gm.photo;
+  if (!force && cur && cur.ph === ph && cur.note === note && (cur.busy || cur.items)) return;
+  const st0 = {busy:true, ph, note, step:note ? 'Asking Gemini about the photo and your details…' : 'Asking Gemini what’s in the photo…'};
+  S.gm.photo = st0; renderPhoto();
+  let st;
+  try {
+    const r = await G.foodFromPhoto({...gemAuth(), image:await photoB64(ph.orig || ph.blob, 1280), note});
+    noteModel(r);
+    st = {ph, note, items:r.items, notes:r.notes, cut:r.cut, model:r.model, search:r.search, grounding:r.grounding, added:new Set()};
+    const was = cur && cur.ph === ph && cur.items ? new Set([...cur.added].map(i => gmName(cur.items[i]).toLowerCase())) : new Set();
+    st.items.forEach((x, i) => { if (was.has(gmName(x).toLowerCase())) st.added.add(i); });
+  } catch (e) { console.warn(e); st = {ph, note, err:gemErrText(e)}; }
+  if (S.photo !== ph || S.gm.photo !== st0) return;
+  S.gm.photo = st; renderPhoto(); updateRestaurant();
+  if (st.items) labelMatch(st, () => { if (S.gm.photo === st) renderPhoto(); });
+}
+async function geminiText(q){
+  q = String(q || '').trim(); if (!q) { $('#type-in')?.focus(); return; }
+  if (!gemOn()) {
+    if (sharedAsk()) { S.gm.type = {consent:true, q}; renderTypeExtra(); return; }
+    toast(!navigator.onLine ? 'You’re offline. Gemini needs a connection.' : gemMode() === 'shared' ? 'Gemini is off on this phone. Turn it on in Body → Settings.' : 'Add your Gemini key in Body → Settings first'); return;
+  }
+  const st0 = {busy:true, q, step:`Asking Gemini about “${q.length > 60 ? q.slice(0, 58) + '…' : q}”…`};
+  S.gm.type = st0; renderTypeExtra();
+  let st;
+  try {
+    const r = await G.foodFromText({...gemAuth(), text:q});
+    noteModel(r);
+    st = {q, items:r.items, notes:r.notes, cut:r.cut, model:r.model, search:r.search, grounding:r.grounding, added:new Set()};
+  } catch (e) { console.warn(e); st = {q, err:gemErrText(e)}; }
+  if (S.gm.type !== st0) return;
+  S.gm.type = st; renderTypeExtra();
+  if (st.items) labelMatch(st, () => { if (S.gm.type === st) renderTypeExtra(); });
+  requestAnimationFrame(() => $('#type-extra')?.scrollIntoView({behavior:reduced() ? 'auto' : 'smooth', block:'nearest'}));
+}
+function gmAdd(ctx, idx){
+  const st = S.gm[ctx]; if (!st || !st.items) return;
+  const its = [];
+  for (const i of idx){
+    const x = st.items[i]; if (!x || st.added.has(i)) continue;
+    its.push(gmPlateItem(x)); st.added.add(i);
+    if (x.db && x.useDb) rememberOnline(x.db);
+  }
+  if (!its.length) return;
+  addToPlate(its);
+  if (ctx === 'photo') renderPhoto(); else renderTypeExtra();
+}
+let gemTesting = false;
+async function gemTest(){
+  const el = $('#gem-status'), mode = gemMode(); if (!el || gemTesting) return;
+  if (!mode) { renderGemStatus(); return; }
+  if (!navigator.onLine) { el.textContent = 'You’re offline. Connect to test the key.'; return; }
+  el.innerHTML = '<span class="spin"></span> Testing your key…';
+  gemTesting = true;
+  try {
+    const t = await G.testKey(gemAuth());
+    settings().gemInfo = {model:t.model, search:t.search, t:Date.now()}; saveProfile();
+    renderGemStatus(t.kcal); toast(mode === 'shared' ? 'The shared Gemini server works' : `Gemini connected · ${G.modelName(t.model)}`);
+  } catch (e) {
+    console.warn(e);
+    el.textContent = gemErrText(e) + (['model', 'bad'].includes(e.kind) && e.message ? ` Google said: “${String(e.message).slice(0, 160)}”` : '');
+  } finally { gemTesting = false; }
+}
+function renderGemStatus(kcal){
+  const el = $('#gem-status'); if (!el) return;
+  const i = settings().gemInfo, n = G.usedToday();
+  const row = $('#gemshared-row'), mode = gemMode();
+  if (row) { row.hidden = mode !== 'shared'; $('#set-gemshared').checked = settings().gemShared === true; }
+  if (!mode) { el.textContent = 'Not set. Photos, menus and typing use the on-device tools.'; return; }
+  if (mode === 'shared') {
+    el.textContent = `This app has a shared Gemini server${settings().gemShared === false ? ', turned off on this phone' : settings().gemShared ? '' : ' (it asks before the first photo)'}.${i ? ` ${G.modelName(i.model)}, Google Search ${i.search ? 'on' : 'off'}.` : ''}${kcal ? ` Test answer: a Big Mac is about ${int(kcal)} kcal.` : ''} ${Math.min(n, SHARED_DAILY_LIMIT)} of ${SHARED_DAILY_LIMIT} requests used today on this phone. Paste your own key to use your own free quota instead.`;
+    return;
+  }
+  if (!i) { el.textContent = 'Key saved. Tap Test to check it.'; return; }
+  el.textContent = `✓ Connected: ${G.modelName(i.model)}. Google Search ${i.search ? 'on' : 'off (it isn’t on the free tier for this key)'}.${kcal ? ` Test answer: a Big Mac is about ${int(kcal)} kcal.` : ''} ${n} request${n === 1 ? '' : 's'} today.`;
 }
 
 /* ---------- eating out ---------- */
@@ -2298,9 +2497,41 @@ function eoGo(){
   if (c) { S.eo.chain = c.key; S.eo.kind = c.usda ? null : c.kind; }
   else { S.eo.chain = null; S.eo.kind = kindFromName(q); }
   renderMeals();
+  // no USDA numbers for this place: Gemini knows most chains' published nutrition
+  if (gemOn() && !(c && c.usda)) eoGemini(c ? c.name : q);
+}
+const gmMenuItem = (x, chainKey, place) => ({id:'g' + uid().slice(1), ndb:null, ai:true, src:x.source, place:place || '', name:x.name, full:x.name, chain:chainKey || null, generic:true,
+  role:x.role || menuRole(x.name), retired:false, p:x.p, counts:null, printed:x.source === 'menu' ? x.kcal : null,
+  sizes:[{t:portionLabel(x.portion) + (x.kcalHi > x.kcal ? ` (${int(x.kcal)}–${int(x.kcalHi)} cal)` : ''), g:x.grams}]});
+async function eoGemini(name){
+  S.eo.busy = true; S.eo.err = ''; S.eo.step = `Asking Gemini for ${poss(name)} menu…`; renderMeals();
+  try {
+    const r = await G.menuForName({...gemAuth(), name});
+    noteModel(r);
+    const c = chainByName(r.restaurant) || chainByName(name);
+    const items = r.items.map(x => gmMenuItem(x, c ? c.key : null, r.restaurant || name));
+    if (items.length) S.eo.menu = {items, chain:c ? c.key : null, ai:'name', name:r.restaurant || name, model:r.model, search:r.search, grounding:r.grounding};
+    else S.eo.err = `Gemini didn’t have a menu for ${name}.`;
+  } catch (e) { console.warn(e); S.eo.err = gemErrText(e) + ' These are typical dishes instead.'; }
+  finally { S.eo.busy = false; if (S.tab === 'eatout') renderMeals(); }
 }
 async function eoPhoto(file){
   S.eo.busy = true; S.eo.err = ''; S.eo.step = 'Reading the menu…'; renderMeals();
+  if (gemOn()) {
+    try {
+      S.eo.step = 'Gemini is reading the menu…'; renderMeals();
+      const r = await G.menuFromPhoto({...gemAuth(), image:await photoB64(file, 1600), restaurant:S.eo.chain ? CHAIN_BY[S.eo.chain].name : (S.eo.q || '')});
+      noteModel(r);
+      const c = detectChain(r.restaurant) || chainByName(r.restaurant) || (S.eo.chain ? CHAIN_BY[S.eo.chain] : null);
+      const items = r.items.map(x => gmMenuItem(x, c ? c.key : null, r.restaurant));
+      if (items.length) {
+        S.eo.menu = {items, chain:c ? c.key : null, ai:'photo', name:r.restaurant, model:r.model, search:r.search, grounding:r.grounding};
+        if (c) { S.eo.chain = c.key; S.eo.q = c.name; } else if (r.restaurant) S.eo.q = r.restaurant;
+        S.eo.busy = false; if (S.tab === 'eatout') renderMeals(); return;
+      }
+      toast('Gemini couldn’t read menu items there. Trying the on-device reader.');
+    } catch (e) { console.warn(e); toast(gemErrText(e) + ' Using the on-device reader.'); }
+  }
   try {
     const step = t => { S.eo.step = t; const el = $('#eo-step'); if (el) el.textContent = t; };
     const words = await readWords(file, step);
@@ -2325,7 +2556,13 @@ function renderEatOut(el){
   const E = S.eo, T0 = mealTarget();
   const T = {kcal:num(E.tKcal) || T0.kcal, protein:num(E.tP) || T0.protein, carbs:T0.carbs, fat:T0.fat};
   let items = null, title = '', note = '';
-  if (E.menu) { items = E.menu.items; const c = E.menu.chain && CHAIN_BY[E.menu.chain]; title = c ? `${c.name} menu` : 'Your menu'; note = `Calories read from your photo; protein, carbs and fat estimated from similar dishes${c && c.usda ? ` and ${poss(c.name)} own items` : ''}.`; }
+  if (E.menu && E.menu.ai) {
+    items = E.menu.items; const c = E.menu.chain && CHAIN_BY[E.menu.chain], nm = c ? c.name : E.menu.name;
+    title = nm ? (E.menu.ai === 'photo' ? `${nm} menu` : nm) : 'Your menu';
+    note = E.menu.ai === 'photo' ? `Read by ${G.modelName(E.menu.model)} from your photo: calories as printed where it could read them, otherwise ${nm ? poss(nm) + ' published' : 'published'} or estimated numbers.`
+      : `${G.modelName(E.menu.model)}’s list of ${poss(nm)} published nutrition${E.menu.search ? ', checked with Google Search' : ''}. Menus change, so check anything that looks off.`;
+  }
+  else if (E.menu) { items = E.menu.items; const c = E.menu.chain && CHAIN_BY[E.menu.chain]; title = c ? `${c.name} menu` : 'Your menu'; note = `Calories read from your photo; protein, carbs and fat estimated from similar dishes${c && c.usda ? ` and ${poss(c.name)} own items` : ''}.`; }
   else if (E.chain && CHAIN_BY[E.chain].usda) { const c = CHAIN_BY[E.chain]; items = menuFor(c.key); title = c.name; note = `Numbers are USDA’s analysis of ${c.name} food from the 2010s. Recipes and sizes change, so treat them as close estimates.`; }
   else if (E.kind) { items = genericMenu(E.kind); const c = E.chain && CHAIN_BY[E.chain]; title = c ? c.name : (E.q || 'This restaurant'); note = `${c ? `The app has no official ${c.name} numbers` : 'That restaurant isn’t in the app’s data'}, so these are typical dishes at a ${KIND_LABEL[E.kind] || 'restaurant'}. Snap the menu for its real calories.`; }
   const sg = items && items.length ? suggest(items, T) : null;
@@ -2340,9 +2577,11 @@ function renderEatOut(el){
       <div class="grid2"><div class="field"><label for="eo-kcal">Calories</label><div class="unit"><input type="number" id="eo-kcal" inputmode="numeric" value="${esc(E.tKcal || T0.kcal)}"><em>kcal</em></div></div>
         <div class="field"><label for="eo-p">Protein at least</label><div class="unit"><input type="number" id="eo-p" inputmode="numeric" value="${esc(E.tP || T0.protein)}"><em>g</em></div></div></div>
       <p class="fine">${esc(T0.note)}</p></div>
+    ${sharedAsk() ? consentHTML('eo') : ''}
     ${E.busy ? `<div class="recbox"><span><span class="spin"></span> <b id="eo-step">${esc(E.step)}</b></span></div>` : ''}
     ${E.err ? `<p class="err">${esc(E.err)}</p>` : ''}
-    ${sg ? `<div class="sec"><div class="sec-head"><h2 class="h">${esc(title)}</h2>${E.menu ? '<button type="button" class="linkbtn" data-action="eo-clear-menu">Clear menu</button>' : ''}</div><p class="fine">${esc(note)}</p></div>
+    ${sg ? `<div class="sec"><div class="sec-head"><h2 class="h">${esc(title)}</h2>${E.menu ? '<button type="button" class="linkbtn" data-action="eo-clear-menu">Clear menu</button>' : ''}</div><p class="fine">${esc(note)}</p>
+      ${!E.menu && gemOn() && !E.busy ? '<p class="fine"><button type="button" class="linkbtn" data-action="eo-gm">Get the current menu from Gemini</button></p>' : ''}${E.menu?.ai ? groundingHTML(E.menu.grounding) : ''}</div>
       ${sg.best.length ? `<div class="sec"><h3 class="h">Best fits for this meal</h3>${sg.best.map((c, i) => comboHTML(c, 'best', i, T)).join('')}</div>` : '<p class="fine">Nothing on this menu fits well. Try a higher calorie target.</p>'}
       ${sg.protein.length ? `<div class="sec"><h3 class="h">Most protein for the calories</h3>${sg.protein.map((c, i) => comboHTML(c, 'protein', i, T)).join('')}</div>` : ''}
       ${sg.light.length ? `<div class="sec"><h3 class="h">Lighter</h3>${sg.light.map((c, i) => comboHTML(c, 'light', i, T)).join('')}</div>` : ''}
@@ -2351,7 +2590,7 @@ function renderEatOut(el){
     ${!sg && !E.busy ? `<div class="empty"><b>Eating out?</b><p>Type the restaurant or snap its menu. You get picks sized to what’s left of your calories and protein today.</p></div>` : ''}`;
 }
 function logCombo(c){
-  const its = c.parts.map(p => { const pi = menuPlateItem(p.it, portionsOf(p.it).findIndex(x => x.t === p.po.t)); if (pi) pi.group = (CHAIN_BY[p.it.chain] || {}).name || S.eo.q || ''; return pi; }).filter(Boolean);
+  const its = c.parts.map(p => { const pi = menuPlateItem(p.it, portionsOf(p.it).findIndex(x => x.t === p.po.t)); const g = (CHAIN_BY[p.it.chain] || {}).name || S.eo.q || ''; if (pi && g && !String(pi.sub || '').startsWith(g)) pi.group = g; return pi; }).filter(Boolean);
   if (!its.length) return;
   S.plate.push(...its);
   S.plateName = c.parts.map(p => p.it.name).join(' + ').slice(0, 60);
@@ -2405,7 +2644,7 @@ document.addEventListener('click', e => {
     case 'mode': S.mode = b.dataset.mode; renderScan(); if (S.mode === 'type') setTimeout(() => $('#search-in').focus(), 50); break;
     case 'take-photo': $('#in-cam').click(); break;
     case 'pick-photo': $('#in-gal').click(); break;
-    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.pk.res = null; S.pk.busy = false; S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''}; renderPhoto(); break;
+    case 'clear-photo': if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.gm.photo = null; S.rec.results = null; S.pk.res = null; S.pk.busy = false; S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''}; renderPhoto(); break;
     case 'pk-add': {
       const it = (S.pk.res?.items || []).find(x => x.id === b.dataset.id); if (!it || S.pk.added.has(it.id)) break;
       b.disabled = true;
@@ -2507,6 +2746,20 @@ document.addEventListener('click', e => {
     case 'eo-go': eoGo(); break;
     case 'eo-photo': pickImage(f => eoPhoto(f), !!b.dataset.cam); break;
     case 'eo-clear-menu': S.eo.menu = null; renderMeals(); break;
+    case 'eo-gm': eoGemini(S.eo.chain ? CHAIN_BY[S.eo.chain].name : S.eo.q); break;
+    /* Gemini */
+    case 'gm-add': gmAdd(b.dataset.ctx, [Number(b.dataset.i)]); break;
+    case 'gm-add-all': { const st = S.gm[b.dataset.ctx]; if (st?.items) gmAdd(b.dataset.ctx, st.items.map((x, i) => i)); break; }
+    case 'gm-retry': if (b.dataset.ctx === 'photo') geminiPhoto(true); else geminiText(S.gm.type?.q); break;
+    case 'gm-type': geminiText($('#type-in').value); break;
+    case 'gm-consent': {
+      const yes = b.dataset.v === '1', ctx = b.dataset.ctx;
+      settings().gemShared = yes; saveProfile(); renderGemStatus(); renderTypeExtra();
+      if (ctx === 'photo') { if (yes) geminiPhoto(true); else { S.gm.photo = null; renderPhoto(); } }
+      else if (ctx === 'type') { const q = S.gm.type?.q; S.gm.type = null; if (yes) geminiText(q); else renderTypeExtra(); }
+      else { renderMeals(); toast(yes ? 'Gemini is on. Tap Show ideas or snap the menu again.' : 'Keeping everything on this phone'); }
+      break; }
+    case 'gem-test': { const v = $('#set-gem').value.trim(); if (v !== gemKey()) { settings().gemKey = v; settings().gemInfo = null; G.forget(); saveProfile(); } gemTest(); break; }
     case 'eo-log': { const c = S.eo.sg?.[b.dataset.list]?.[Number(b.dataset.i)]; if (c) logCombo(c); break; }
     /* water */
     case 'water-add': addWater(Number(b.dataset.oz)); break;
@@ -2640,6 +2893,15 @@ document.addEventListener('change', e => {
   if (t.id === 'cmp-b') { S.sp.cmpB = t.value; renderSports(); return; }
   if (t.id === 'set-creatine') { S.profile.creatine = t.checked; saveProfile(); return; }
   if (t.id === 'set-fdc') { settings().fdcKey = t.value.trim(); saveProfile(); toast(t.value.trim() ? 'USDA key saved' : 'Using the shared USDA key'); return; }
+  if (t.id === 'set-gem') {
+    const v = t.value.trim(); if (v === gemKey()) return;
+    settings().gemKey = v; settings().gemInfo = null; G.forget(); saveProfile();
+    renderTypeExtra();
+    if (v) gemTest(); else { renderGemStatus(); toast('Gemini key removed'); }
+    return;
+  }
+  if (t.id === 'set-gemshared') { settings().gemShared = t.checked; saveProfile(); renderGemStatus(); renderTypeExtra(); toast(t.checked ? 'Gemini is on for this phone' : 'Gemini is off. Everything stays on this phone.'); return; }
+  if (t.dataset.gmSrc) { const [ctx, i] = t.dataset.gmSrc.split(':'), x = S.gm[ctx]?.items?.[Number(i)]; if (x) { x.useDb = t.value === 'db'; if (ctx === 'photo') renderPhoto(); else renderTypeExtra(); } return; }
   if (t.matches('[data-rest-pick]')) { if (t.value) { S.rest.manual = t.value; S.rest.no = false; updateRestaurant(); } return; }
   if (t.id === 'eo-q' && chainByName(t.value)) { eoGo(); return; }
   if (t.id === 'b-cycle') { S.profile.cycleStart = t.value; saveProfile(); return; }

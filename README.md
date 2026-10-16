@@ -1,8 +1,9 @@
 # Macro Lens
 
-A free calorie and nutrition tracker that runs entirely on your phone. No account, no API key, no subscription.
+A free calorie and nutrition tracker that runs on your phone. No account and no subscription. An API key is optional (see Gemini below).
 
 - **Photo:** packaged foods are identified from the label: the app finds barcodes in the photo, reads the printed words on the phone (Tesseract OCR), groups them by package, checks each package's shape, and matches brand + product name against the Open Food Facts grocery database. Meals without a label use an on-device food recognizer (OpenAI CLIP via Transformers.js).
+- **Gemini (optional, free key):** paste a free Google AI Studio key in Body → Settings and photos go to Google Gemini, which reads brands, flavors, restaurant items and portions (your photo details ride along). Packaged items are cross-checked against Open Food Facts / USDA label data, which wins by default. Typed foods the app can't find, menu photos and restaurant names in Eat out also use it. The app tests the key and picks the best free model: Gemini 2.5 Flash-Lite with Google Search if your account still has it, otherwise Gemini 3.5 Flash-Lite without search. Without a key, or offline, everything works on-device as before. On the free tier Google may use what you send to improve its products; the key stays on the phone and is left out of backups.
 - **Photo + details:** add a description on top of any photo ("6 oz", "with ranch", "salty peanut", "large fries from McDonald's"). Amounts change the portion, flavors and brand words steer the label search, extra foods are added, and it also works with no photo.
 - **Brands:** the label reader tries sideways and light-on-dark text, and when it can read the brand but not the flavor it asks you to pick instead of guessing.
 - **Restaurants:** McDonald's, Burger King, Wendy's, Taco Bell, KFC, Popeyes, Subway, Chick-fil-A, the big pizza chains and several sit-down chains are recognized from printed words on the packaging (or the image model, if downloaded) and their USDA-analyzed menu items are offered, ranked for the photo. Other chains get typical dishes for that kind of restaurant.
@@ -23,6 +24,22 @@ A free calorie and nutrition tracker that runs entirely on your phone. No accoun
 - **Check-ins:** a 20-second quiz you can take several times a day (energy, hunger, mood, soreness, pee color and count, poops, sleep, practice rating, your own questions). Weeks are compared side by side with a feel score, you can pin weeks you felt great, and it lists what to change to get back to a pinned week.
 - Your log is stored only on your device. Use Export backup in the Body tab to keep a copy.
 
+## Share Gemini with everyone (optional)
+
+Each phone can paste its own free key in Body → Settings. To let every phone that opens your copy of the app use Gemini without a key, run the small free server in `worker/gemini-proxy.js`. It keeps your key secret (a key put in the app's code would be visible to anyone) and passes requests to Google.
+
+1. Make a Gemini key at aistudio.google.com/apikey. Leave billing off, so nobody can run up a bill: the worst case is the free daily quota running out, and then phones fall back to on-device recognition.
+2. Sign up free at dash.cloudflare.com. Open **Workers & Pages → Create**, start from the **Hello World** worker, name it (for example `macro-lens-gemini`) and **Deploy**.
+3. Open the worker, choose **Edit code**, replace everything with the contents of `worker/gemini-proxy.js`, and **Deploy**.
+4. In the worker's **Settings → Variables and Secrets**, **Add** a variable of type **Secret** named `GEMINI_KEY` with your key as the value, then **Deploy**.
+5. Copy the worker's address (like `https://macro-lens-gemini.yourname.workers.dev`).
+6. On GitHub, edit `js/config.js` and paste the address between the quotes of `GEMINI_PROXY`. Commit.
+7. Open the app twice so it picks up the change. Body → Settings shows "This app has a shared Gemini server"; tap **Test**.
+
+How it's protected: the server only answers your app's site (`ALLOWED_ORIGINS`, default `https://athanbriggs-hub.github.io`; add more separated by commas, like an app-store build's address), only allows the cheap Flash-Lite models, limits each internet connection to `HOURLY_LIMIT` requests an hour (default 40), and each phone stops after `SHARED_DAILY_LIMIT` requests a day (60, in `js/config.js`). Every phone is asked once before anything is sent to Google, and can switch it off in Settings. A phone with its own key uses that instead.
+
+All phones share your key's free daily quota (see your limits at aistudio.google.com/rate-limit). For more users, turn on billing (Flash-Lite costs roughly a dollar per thousand photos, and paid-tier data isn't used to train Google's models) and set a budget alert in Google Cloud. Google's Gemini API terms require users to be 18 or older and don't allow apps aimed at or likely used by people under 18, and only the paid tier may be offered to people in the EU, UK or Switzerland.
+
 ## Install on Android
 
 Open the site in Chrome, tap the ⋮ menu, then **Add to home screen → Install**. It opens full screen like any app and works offline (barcode lookups need a connection).
@@ -37,6 +54,7 @@ Open the site in Chrome, tap the ⋮ menu, then **Add to home screen → Install
 - Branded labels and typical dishes online: [USDA FoodData Central](https://fdc.nal.usda.gov) (CC0, public domain).
 - Restaurant items: USDA's analyses of chain restaurant food in SR28 (2010s); chains change recipes, so treat them as close estimates.
 - Scale displays: the seven-segment model `ssd_int` from [tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) (Apache-2.0), bundled in `vendor/tesseract/`.
+- Optional recognition: [Google Gemini API](https://ai.google.dev) with your own key ([terms](https://ai.google.dev/gemini-api/terms)). Search suggestions from Google are shown with grounded answers.
 - Product search: Open Food Facts [Search-a-licious](https://search.openfoodfacts.org) API, falling back to the classic search API; requests are rate-limited and cached on the phone.
 
 Estimates are for tracking, not medical advice. Web apps can't read Samsung Health, Health Connect or Apple Health directly; that needs an app-store version.

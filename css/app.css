@@ -147,7 +147,7 @@ details.alln[open] summary svg{transform:rotate(180deg)}
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}
 .field label,.lbl{font-size:13px;font-weight:600}
 .hint{font-size:12px;color:var(--muted);font-weight:400}
-textarea,input[type="text"],input[type="number"],select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 12px;font-size:16px;min-width:0}
+textarea,input[type="text"],input[type="password"],input[type="number"],select{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:11px 12px;font-size:16px;min-width:0}
 textarea{min-height:84px;resize:vertical}
 select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
 .notice{margin:0;background:color-mix(in oklab,var(--carbs) 14%,var(--surface));border:1px solid color-mix(in oklab,var(--carbs) 35%,var(--line));border-radius:12px;padding:10px 12px;font-size:13.5px}
@@ -584,3 +584,13 @@ em.old{font-style:normal;font-size:10.5px;font-weight:700;text-transform:upperca
 @media (min-width:420px){.lblgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .lblcard .field label{font-size:12.5px}
 #view-meals .seg.modes button,#view-pantry .seg.modes button{font-size:13px;padding:0 4px}
+/* Gemini results */
+.gm .sec-head .sub{font-size:12px}
+.gmrow small{display:block;margin-top:2px}
+.gmrow .tag{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin-right:6px}
+.btn.wide{width:100%}
+.gm-sugg{display:block;width:100%;height:52px;border:0;border-radius:12px;background:transparent;color-scheme:normal}
+.gm-src{overflow-wrap:anywhere}
+details.help ul.guesses{padding-left:0;color:inherit;font-size:inherit;gap:8px}
+#gem-status{min-height:1.2em}
+.gm{margin-bottom:6px}

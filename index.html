@@ -126,9 +126,9 @@
       <div class="field">
         <label for="type-in">What did you eat?</label>
         <textarea id="type-in" placeholder="e.g. 2 eggs, 2 slices toast, 1 tbsp butter&#10;6 oz chicken breast with 1 cup rice&#10;Barebells cookies and cream bar · big mac and large fries from McDonald's&#10;Greek yogurt 170 g (pantry)"></textarea>
-        <button type="button" class="btn primary" data-action="type-add">Add to plate</button>
+        <div class="row2"><button type="button" class="btn primary" data-action="type-add">Add to plate</button><button type="button" class="btn ghost" data-action="gm-type" id="gm-type-btn" hidden>Ask Gemini</button></div>
         <p class="err" id="type-msg" hidden></p>
-        <p class="fine">Name a brand to look it up online. Add <b>(pantry)</b> after a food to use the exact item in your pantry.</p>
+        <p class="fine">Name a brand to look it up online. Add <b>(pantry)</b> after a food to use the exact item in your pantry. With a Gemini key, anything the app can’t find goes to Gemini.</p>
       </div>
       <div class="field">
         <span class="lbl">Have the nutrition label?</span>
@@ -348,6 +348,11 @@
     </div>
     <div class="sec">
       <h2 class="h">Settings</h2>
+      <div class="field"><label for="set-gem">Gemini API key <span class="hint">optional · free · much better photo recognition</span></label>
+        <div class="fix-row"><input type="password" id="set-gem" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
+        <p class="fine" id="gem-status" aria-live="polite"></p>
+        <label class="switch" for="set-gemshared" id="gemshared-row" hidden><span><b>Use the app’s shared Gemini</b><small>Sends photos, menus and unknown typed foods to Google Gemini through this app’s server.</small></span><input type="checkbox" id="set-gemshared" role="switch"></label>
+        <p class="fine">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. With it, Google Gemini reads your food photos (brands, flavors, restaurant items, portions), menus and anything typed the app can’t find. On the free tier Google may use what you send to improve its products, and people may review it, so don’t send anything private. The key stays on this phone and isn’t put in backups.</p></div>
       <div class="field"><label for="set-fdc">USDA FoodData Central key <span class="hint">optional, for online label search</span></label>
         <input type="text" id="set-fdc" autocomplete="off" spellcheck="false" placeholder="Empty uses the shared DEMO_KEY">
         <p class="fine">Free and instant at <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">fdc.nal.usda.gov/api-key-signup</a>. The shared key allows about 30 searches an hour; your own key allows 1,000. It stays on this phone.</p></div>
@@ -362,7 +367,7 @@
       </div>
       <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
       <p class="fine" id="rec-about"></p>
-      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode and brand data: Open Food Facts (Open Database License) and USDA FoodData Central (public domain). Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode and brand data: Open Food Facts (Open Database License) and USDA FoodData Central (public domain). Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Optional photo, menu and text recognition: Google Gemini API, with your own key. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
     </div>
   </section>
 </div>

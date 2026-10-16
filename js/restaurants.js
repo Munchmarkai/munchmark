@@ -102,6 +102,7 @@ function roleOf(name){
   if (/^(bread,|toast|french fries|fries|hash browns?|hash brown rounds|onion rings|coleslaw|side salad|breadsticks?|apple slices|biscuit|mashed|corn|refried beans|spanish rice|egg rolls?|fried rice|chips|mozzarella sticks|chinese, (egg rolls|fried rice)|family style, (french fries|onion rings|coleslaw|hash browns))/.test(n)) return 'side';
   return 'main';
 }
+export const menuRole = roleOf;
 // items the chain has since dropped (USDA analyzed them around 2010-2016); kept in the full menu, left out of suggestions
 const RETIRED = {mcdonalds:/Premium (Grilled|Crispy)|Bacon Ranch Salad|Side Salad|Fruit 'n Yogurt Parfait|NEWMAN'S OWN|Peanuts \(for Sundaes\)/i};
 const COUNT_UNIT = /\b(piece|pieces|strip|strips|slice|wing|drumstick|thigh|breast|stick|breadstick|taco|nugget|round|each)\b/i;
