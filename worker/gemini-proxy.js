@@ -22,6 +22,7 @@
 // Before the first sale: turn billing on for the Google project, add a budget alert, and set FREE_TIER to no.
 // Plus promises the paid tier, where Google doesn't use requests to improve its products.
 
+const VERSION = 'v12.1';   // shown at the server's address, so you can tell which code Cloudflare is running
 const DEFAULT_ORIGINS = 'https://athanbriggs-ui.github.io, https://athanbriggs-hub.github.io';
 const MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest']);
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -154,12 +155,17 @@ async function admin(req, env, ip){
 
 export default {
   async fetch(req, env, ctx, fetcher = fetch) {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url), path = url.pathname;
     const ip = req.headers.get('CF-Connecting-IP') || 'unknown';
-    if (path === '/admin' && req.method === 'GET') return new Response(ADMIN_HTML, {headers:{'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store',
+    const page = path.replace(/\/+$/, '').toLowerCase() || '/';
+    // a browser opening the server: the bare address goes to the codes page, anything else says what this is
+    if (req.method === 'GET' && page === '/') return Response.redirect(url.origin + '/admin', 302);
+    if (req.method === 'GET' && page !== '/admin') return new Response(`Munchmark Plus server, version ${VERSION}. Your free-codes page is ${url.origin}/admin\n`,
+      {status:404, headers:{'Content-Type':'text/plain; charset=utf-8', 'Cache-Control':'no-store'}});
+    if (page === '/admin' && req.method === 'GET') return new Response(ADMIN_HTML.replace('VERSION_TAG', VERSION), {headers:{'Content-Type':'text/html; charset=utf-8', 'Cache-Control':'no-store',
       'X-Frame-Options':'DENY', 'Referrer-Policy':'no-referrer', 'X-Robots-Tag':'noindex',
       'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"}});
-    if (path === '/admin/api') return admin(req, env, ip);
+    if (page === '/admin/api') return admin(req, env, ip);
 
     const origin = (req.headers.get('Origin') || '').replace(/\/+$/, '');
     const allowed = list(env.ALLOWED_ORIGINS || DEFAULT_ORIGINS).map(s => s.replace(/\/+$/, ''));
@@ -264,7 +270,7 @@ const ADMIN_HTML = `<!doctype html>
 <body>
 <main>
   <div class="top"><h1>Munchmark codes</h1><button type="button" class="link" id="out" hidden>Sign out</button></div>
-  <p class="muted">Each code gives one person Gemini in the app for free, with no daily limit, until you switch it off.</p>
+  <p class="muted">Each code gives one person Gemini in the app for free, with no daily limit, until you switch it off. <span style="opacity:.7">Server VERSION_TAG.</span></p>
 
   <section class="card" id="login">
     <label for="key">Admin password</label>
