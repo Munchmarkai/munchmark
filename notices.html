@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Munchmark third-party notices</title>
+<style>
+  :root{--bg:#F2F4EE;--ink:#17201A;--muted:#55605A;--line:#D8DDD3;--accent:#2E7A4D}
+  @media (prefers-color-scheme: dark){:root{--bg:#0F1311;--ink:#E8EDE9;--muted:#A3ADA6;--line:#2A322D;--accent:#6CC491}}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  main{max-width:720px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:26px;margin:8px 0 4px} h2{font-size:18px;margin:28px 0 6px}
+  .muted{color:var(--muted);font-size:14px} a{color:var(--accent)} ul{padding-left:20px} li{margin:4px 0}
+  .todo{background:#fff3c4;color:#5a4500;padding:0 4px;border-radius:4px}
+  table{border-collapse:collapse;width:100%;font-size:14px;margin:8px 0} th,td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top} code{font-size:13px}
+</style>
+</head>
+<body>
+<main>
+<p><a href="./">← Back to Munchmark</a></p>
+<h1>Third-party notices</h1>
+<p>Munchmark is built on the open-source software and open data below. Each keeps its own license; the full texts ship with the app in the files named here.</p>
+<h2>Software bundled with the app</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Use</th>
+<th>License</th>
+<th>License file</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://github.com/huggingface/transformers.js">Transformers.js</a> 3.8.1 (Hugging Face)</td>
+<td>Runs the on-device food recognizer</td>
+<td>Apache License 2.0</td>
+<td><code>vendor/LICENSE-transformers.txt</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/microsoft/onnxruntime">ONNX Runtime Web</a> (Microsoft)</td>
+<td>Model runtime used by Transformers.js</td>
+<td>MIT</td>
+<td><code>vendor/LICENSE-onnxruntime.txt</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/naptha/tesseract.js">Tesseract.js</a> 7.0.0 and the English LSTM model</td>
+<td>Reads labels, recipe cards and scale displays</td>
+<td>Apache License 2.0</td>
+<td><code>vendor/tesseract/LICENSE-tesseract.txt</code></td>
+</tr>
+<tr>
+<td><code>ssd_int</code> seven-segment model from <a href="https://github.com/Shreeshrii/tessdata_ssd">tessdata_ssd</a></td>
+<td>Reads digital scale displays</td>
+<td>Apache License 2.0</td>
+<td><code>vendor/tesseract/LICENSE-ssd.txt</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/Omnibus-Type/Archivo">Archivo</a> font</td>
+<td>Headings</td>
+<td>SIL Open Font License 1.1</td>
+<td><code>fonts/LICENSE-archivo.txt</code></td>
+</tr>
+<tr>
+<td><a href="https://github.com/erikdkennedy/figtree">Figtree</a> font</td>
+<td>Body text</td>
+<td>SIL Open Font License 1.1</td>
+<td><code>fonts/LICENSE-figtree.txt</code></td>
+</tr>
+</tbody>
+</table>
+<h2>Downloaded on first use</h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Use</th>
+<th>License</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="https://huggingface.co/Xenova/clip-vit-base-patch32">Xenova/clip-vit-base-patch32</a>, a conversion of <a href="https://github.com/openai/CLIP">OpenAI CLIP</a></td>
+<td>On-device food, package and container recognition</td>
+<td>MIT</td>
+</tr>
+</tbody>
+</table>
+<h2>Data</h2>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Use</th>
+<th>License and attribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>USDA National Nutrient Database for Standard Reference, Release 28</td>
+<td>Built-in food table</td>
+<td>Public domain (U.S. government work)</td>
+</tr>
+<tr>
+<td><a href="https://fdc.nal.usda.gov">USDA FoodData Central</a></td>
+<td>Online branded labels and typical dishes</td>
+<td>Public domain (CC0)</td>
+</tr>
+<tr>
+<td><a href="https://world.openfoodfacts.org">Open Food Facts</a></td>
+<td>Barcode and product lookups</td>
+<td>Database: <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License 1.0</a>; contents: Database Contents License 1.0; product photos: CC BY-SA 3.0. Data © Open Food Facts contributors. Open Food Facts data is provided as is and must not be used for medical purposes.</td>
+</tr>
+</tbody>
+</table>
+<h2>Online services (optional)</h2>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Use</th>
+<th>Terms</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Google Gemini API</td>
+<td>AI photo, menu and typed-food recognition, only after the person agrees</td>
+<td><a href="https://ai.google.dev/gemini-api/terms">Gemini API Additional Terms</a></td>
+</tr>
+</tbody>
+</table>
+<h2>Names and trademarks</h2>
+<p>Restaurant, brand and product names (for example McDonald's, Barebells) appear only to identify foods and their nutrition. They are trademarks of their owners. Munchmark is not affiliated with, sponsored by or endorsed by any of them.</p>
+</main>
+</body>
+</html>

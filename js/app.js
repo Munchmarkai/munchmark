@@ -14,7 +14,7 @@ import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, de
 import * as G from './gemini.js';
 import { GEMINI_PROXY as PROXY_SET, SHARED_DAILY_LIMIT } from './config.js';
 // the example address from the instructions isn't a real server
-const GEMINI_PROXY = /yourname\.workers\.dev/i.test(PROXY_SET) ? '' : String(PROXY_SET || '').trim();
+const GEMINI_PROXY = ((v) => !v || /yourname\.workers\.dev/i.test(v) ? '' : /^https?:\/\//i.test(v) ? v : 'https://' + v)(String(PROXY_SET || '').trim());
 import { searchOnline, webSearchURL, setFdcKey } from './online.js';
 import { parseLabel, labelToP100 } from './label.js';
 import { WEIGH_POINTS, QUESTIONS, URINE, sportDefaults, hrMax, zoneOf, summarizeHR, connectHR, dayMetrics, feelScore, weekStats, replicate, COMPARE_ROWS } from './sports.js';
@@ -335,7 +335,7 @@ function renderPhoto(){
   const rHTML = restHTML();
   const dEl = $('#desc-out'); if (dEl) dEl.innerHTML = descOutHTML();
   // Gemini's label-data matches cover the packaged section, so it only shows when they don't
-  const pkHTML = pkItems.length && (!gmHas || gmSt.items.some(x => x.kind === 'packaged' && !x.db)) ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
+  const pkHTML = pkItems.length && (!gmHas || gmSt.items.some(x => x.kind === 'packaged' && !x.db)) ? `<div class="sec"><div class="sec-head"><h2 class="h">Packaged food</h2><span class="sub">Matched from the label</span></div><p class="fine credit">Product data: <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> contributors (ODbL) or USDA FoodData Central.</p><ul class="pks">${pkItems.map(it => pkCard(it, 'photo')).join('')}</ul></div>` : '';
   const gmHTML = gmSectionHTML(gmSt, 'photo', 'Gemini sees');
   const restLink = S.photo && !S.rest.chain && !S.rest.ask && !S.rest.open ? '<p class="fine"><button type="button" class="linkbtn" data-action="rest-open">From a restaurant? Pick it for its menu</button></p>' : '';
   // when Gemini already named the restaurant items, the chain's USDA menu is a fallback, so it folds away
@@ -810,7 +810,7 @@ function exportBackup(){
   const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:{...S.profile, settings:{...(S.profile.settings || {}), gemKey:undefined, gemInfo:undefined}}, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
-  a.download = `macro-lens-backup-${dayKey()}.json`;
+  a.download = `munchmark-backup-${dayKey()}.json`;
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   toast('Backup saved to your Downloads');
@@ -827,7 +827,7 @@ async function importBackup(file){
     if (Array.isArray(j.containers)) { S.containers = j.containers; saveContainers(); }
     if (Array.isArray(j.myFoods)) { S.myFoods = j.myFoods; saveMyFoods(); }
     renderToday(); renderBody(); toast(`Restored ${n} day${n === 1 ? '' : 's'} of data`);
-  } catch { toast('That file isn’t a Macro Lens backup.'); }
+  } catch { toast('That file isn’t a Munchmark backup.'); }
 }
 
 
@@ -875,7 +875,7 @@ function renderWeek(){
   const body = $('#wk-body');
   if (wrappedOn() && !S.wk.report) {
     body.innerHTML = `<div class="wk-cover"><svg class="wr-deco" viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke-width="2"><circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="64"/><circle cx="100" cy="100" r="30"/></svg>
-        <p class="eb">${start === cur ? 'So far this week' : 'Your week, wrapped'}</p>
+        <p class="eb">${start === cur ? 'So far this week' : 'Your week in review'}</p>
         <h2>${esc(rangeText(start))}</h2>
         <div class="wk-quick tnum"><span><b>${s.loggedDays}</b>days logged</span><span><b>${s.loggedDays ? int(s.avg[0]) : '—'}</b>avg calories</span><span><b>${s.proteinDays}</b>protein in range</span></div>
         <button type="button" class="play" data-action="wk-play" ${s.loggedDays ? '' : 'disabled'}><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>${s.loggedDays ? 'Play your week' : 'Log meals to unlock'}</button></div>
@@ -2337,7 +2337,7 @@ function gemErrText(e){
     case 'blocked': return 'Gemini wouldn’t look at this one.';
     case 'net': return `${e.message} Check your connection.`;
     case 'server': return 'Gemini is busy right now. Try again in a minute.';
-    default: return 'Gemini couldn’t answer this time.';
+    default: return `Gemini couldn’t answer this time${e && e.status ? ` (error ${e.status})` : ''}.`;
   }
 }
 // remember which model answered, for Settings
@@ -2397,8 +2397,8 @@ async function labelMatch(st, done){
 }
 function consentHTML(ctx){
   const what = ctx === 'photo' ? 'this photo and your details' : ctx === 'eo' ? 'menu photos and restaurant names' : 'what you typed';
-  return `<div class="recbox gm-ask"><span><b>Recognize with Google Gemini?</b><br><span class="sub">Macro Lens can send ${what} to Google Gemini, which is much better at brands, restaurant food and portions. Google may use what’s sent to improve its products, so don’t send anything private. You can change this in Body → Settings.</span></span>
-    <div class="row2"><button type="button" class="btn primary sm" data-action="gm-consent" data-v="1" data-ctx="${ctx}">Use Gemini</button><button type="button" class="btn ghost sm" data-action="gm-consent" data-v="0" data-ctx="${ctx}">Keep on-device</button></div></div>`;
+  return `<div class="recbox gm-ask"><span><b>Recognize with Google Gemini?</b><br><span class="sub">Munchmark can send ${what} to Google Gemini, which is much better at brands, restaurant food and portions. Google may use what’s sent to improve its products, so don’t send anything private. Google’s terms allow this only for people 18 or older. You can change this in Body → Settings. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></span></span>
+    <div class="row2"><button type="button" class="btn primary sm" data-action="gm-consent" data-v="1" data-ctx="${ctx}">I’m 18+, use Gemini</button><button type="button" class="btn ghost sm" data-action="gm-consent" data-v="0" data-ctx="${ctx}">Keep on-device</button></div></div>`;
 }
 function gemNote(){ return String($('#photo-desc')?.value ?? S.desc.text ?? '').split(/[,;\n]+/).map(x => x.trim()).filter(c => c && pantryTagged(c) == null).join(', ').slice(0, 400); }
 async function geminiPhoto(force = false){
@@ -2947,7 +2947,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) bcSto
 let deferredInstall = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; $('#install-btn').hidden = false; });
 $('#install-btn').addEventListener('click', async () => { if (!deferredInstall) return; deferredInstall.prompt(); await deferredInstall.userChoice.catch(() => {}); deferredInstall = null; $('#install-btn').hidden = true; });
-window.addEventListener('appinstalled', () => { $('#install-btn').hidden = true; toast('Macro Lens is on your home screen'); });
+window.addEventListener('appinstalled', () => { $('#install-btn').hidden = true; toast('Munchmark is on your home screen'); });
 const syncOnline = () => { $('#offline-pill').hidden = navigator.onLine; };
 window.addEventListener('online', syncOnline); window.addEventListener('offline', syncOnline);
 
@@ -2969,5 +2969,5 @@ async function boot(){
   setTab(['scan','body','week','pantry','meals','containers','eatout','sports'].includes(h) ? h : 'today');
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
-boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Macro Lens couldn’t load its food data. Reload the page.</p>'; });
+boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Munchmark couldn’t load its food data. Reload the page.</p>'; });
 window.__ml = {pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};

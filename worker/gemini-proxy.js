@@ -1,11 +1,12 @@
-// Macro Lens shared Gemini server, for Cloudflare Workers (free plan is plenty).
+// Munchmark shared Gemini server, for Cloudflare Workers (free plan is plenty).
 // It keeps your Gemini key secret and passes the app's requests to Google, so every phone that opens
-// your copy of Macro Lens can use Gemini without its own key.
+// your copy of Munchmark can use Gemini without its own key.
 //
 // In Cloudflare: Workers & Pages → your worker → Settings → Variables and Secrets:
 //   GEMINI_KEY       Secret  your key from aistudio.google.com/apikey            (required)
 //   ALLOWED_ORIGINS  Text    sites allowed to use it, comma-separated             (optional, default below)
 //   HOURLY_LIMIT     Text    requests per hour from one internet connection       (optional, default 40)
+//   FREE_TIER        Text    set to no once GEMINI_KEY is a paid-tier key (billing on); that also opens it to the EU, UK and Switzerland
 //
 // Keep billing OFF on the Google project behind the key: then nobody can run up a bill,
 // the worst case is the free daily quota running out and the app falling back to on-device recognition.
@@ -14,6 +15,8 @@ const DEFAULT_ORIGINS = 'https://athanbriggs-ui.github.io, https://athanbriggs-h
 const MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest']);
 const MAX_BYTES = 8 * 1024 * 1024;
 const hits = new Map();   // per-connection counts, best effort (each Cloudflare server keeps its own)
+// Google's terms allow only paid-tier Gemini for people in the EEA, Switzerland and the UK, and this server uses a free-tier key
+const PAID_ONLY = new Set(['AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE','IS','LI','NO','CH','GB']);
 
 export default {
   async fetch(req, env) {
@@ -26,8 +29,10 @@ export default {
       {status: code, headers: {...cors, 'Content-Type': 'application/json'}});
 
     if (req.method === 'OPTIONS') return new Response(null, {status: ok ? 204 : 403, headers: cors});
-    if (!ok) return fail(403, 'key', 'This Gemini server only answers the Macro Lens app.');
+    if (!ok) return fail(403, 'key', 'This Gemini server only answers the Munchmark app.');
     if (!env.GEMINI_KEY) return fail(500, 'key', 'The shared Gemini server has no GEMINI_KEY secret yet.');
+    const country = (req.cf && req.cf.country) || req.headers.get('CF-IPCountry') || '';
+    if (PAID_ONLY.has(country) && env.FREE_TIER !== 'no') return fail(451, 'region', 'Free AI scans aren’t available in your country yet. Everything else in the app still works.');
     const m = new URL(req.url).pathname.match(/^\/v1beta\/models\/([a-z0-9.\-]+):generateContent$/);
     if (req.method !== 'POST' || !m) return fail(404, 'model', 'Not found.');
     if (!MODELS.has(m[1])) return fail(404, 'model', 'That model isn’t allowed on this server.');

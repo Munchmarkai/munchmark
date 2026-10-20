@@ -47,7 +47,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // with a personal key the phone talks to Google; otherwise it goes through the app's shared server, which adds the key
 async function post(key, proxy, model, body, timeoutMs){
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
-  const url = key ? `${API}${model}:generateContent` : `${String(proxy).replace(/\/+$/, '')}/v1beta/models/${model}:generateContent`;
+  const base = String(proxy).trim().replace(/\/+$/, ''), root = /^https?:\/\//i.test(base) ? base : 'https://' + base;   // an address typed without https:// still works
+  const url = key ? `${API}${model}:generateContent` : `${root}/v1beta/models/${model}:generateContent`;
   const headers = key ? {'Content-Type':'application/json', 'x-goog-api-key':key} : {'Content-Type':'application/json'};
   try {
     const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:ctl.signal});

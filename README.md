@@ -1,4 +1,6 @@
-# Macro Lens
+# Munchmark
+
+Calories without the markup. (Formerly called Macro Lens; renamed because other calorie apps already use that name.)
 
 A free calorie and nutrition tracker that runs on your phone. No account and no subscription. An API key is optional (see Gemini below).
 
@@ -15,7 +17,7 @@ A free calorie and nutrition tracker that runs on your phone. No account and no 
 - **Type:** write meals like `2 eggs, 2 slices toast, 1 tbsp butter` or search 8,400 USDA foods.
 - Tracks calories, protein, carbs, fat, fiber, sugar, saturated fat, cholesterol, sodium, potassium, calcium, iron, magnesium, zinc and vitamins A, C, D, B12 and folate.
 - Pantry: snap your cabinet, fridge or groceries (each labeled product is read and matched to the exact brand item; fresh food is spotted by the image model) or add by name/barcode, and get meal ideas or a full-day plan sized to your calorie and macro goals. Describe your diet in your own words (meals and snacks a day, vegetarian/vegan/keto/low carb/halal, allergies, foods to skip or use up, sodium or sugar limits, exact numbers) and the planner follows it.
-- Weekly recap: each day, averages, top foods and sport-aware tips, as Wrapped-style stories or a plain report (switch in Settings).
+- Weekly recap: each day, averages, top foods and sport-aware tips, as story-style recaps or a plain report (switch in Settings).
 - Body stats: BMI, daily calorie target (Mifflin-St Jeor) with protein at 1 g per pound of body weight (±10% counts as on target), fat at 28% of calories and carbs filling the rest, and body fat blended from a photo check, the U.S. Navy tape formula and BMI.
 - **Meals you cook:** snap the ingredient list from a recipe card, cookbook or screen (or type it), weigh the finished pot once, then weigh each bowl (photo of the scale display or type it). The app works out your share of the batch, assuming it's evenly mixed. Packaged ingredients can be added from a photo of the package.
 - **Containers:** save your water bottles (capacity, optional empty weight, a few photos) and Tupperware/bowls (empty weight). Snap a bottle and the app recognizes which one and logs its water; a saved container in a scale photo is subtracted automatically.
@@ -55,6 +57,7 @@ Open the site in Chrome, tap the ⋮ menu, then **Add to home screen → Install
 - Restaurant items: USDA's analyses of chain restaurant food in SR28 (2010s); chains change recipes, so treat them as close estimates.
 - Scale displays: the seven-segment model `ssd_int` from [tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) (Apache-2.0), bundled in `vendor/tesseract/`.
 - Optional recognition: [Google Gemini API](https://ai.google.dev) with your own key ([terms](https://ai.google.dev/gemini-api/terms)). Search suggestions from Google are shown with grounded answers.
+- Privacy policy, terms and full license texts: `privacy.html`, `terms.html`, `notices.html` (from `THIRD_PARTY_NOTICES.md`). Replace `[support email]` in the first two before launch.
 - Product search: Open Food Facts [Search-a-licious](https://search.openfoodfacts.org) API, falling back to the classic search API and then to USDA FoodData Central branded labels when Open Food Facts search is unavailable; requests are rate-limited and cached on the phone.
 
 Estimates are for tracking, not medical advice. Web apps can't read Samsung Health, Health Connect or Apple Health directly; that needs an app-store version.

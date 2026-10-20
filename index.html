@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Macro Lens</title>
+<title>Munchmark</title>
 <meta name="description" content="Snap a meal, scan a barcode or type what you ate. Calories, macros, sodium, potassium, fiber and vitamins, all on your phone.">
 <meta name="theme-color" content="#F2F4EE" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0F1311" media="(prefers-color-scheme: dark)">
@@ -17,7 +17,7 @@
   <header class="top">
     <div class="brand">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21" stroke-linecap="round"/></svg>
-      Macro Lens
+      Munchmark
     </div>
     <span class="top-right">
       <button type="button" class="btn ghost sm" id="install-btn" hidden>Install app</button>
@@ -352,11 +352,11 @@
         <div class="fix-row"><input type="password" id="set-gem" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
         <p class="fine" id="gem-status" aria-live="polite"></p>
         <label class="switch" for="set-gemshared" id="gemshared-row" hidden><span><b>Use the app’s shared Gemini</b><small>Sends photos, menus and unknown typed foods to Google Gemini through this app’s server.</small></span><input type="checkbox" id="set-gemshared" role="switch"></label>
-        <p class="fine">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. With it, Google Gemini reads your food photos (brands, flavors, restaurant items, portions), menus and anything typed the app can’t find. On the free tier Google may use what you send to improve its products, and people may review it, so don’t send anything private. The key stays on this phone and isn’t put in backups.</p></div>
+        <p class="fine">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. With it, Google Gemini reads your food photos (brands, flavors, restaurant items, portions), menus and anything typed the app can’t find. On the free tier Google may use what you send to improve its products, and people may review it, so don’t send anything private. Google’s terms require you to be 18 or older. The key stays on this phone and isn’t put in backups.</p></div>
       <div class="field"><label for="set-fdc">USDA FoodData Central key <span class="hint">optional, for online label search</span></label>
         <input type="text" id="set-fdc" autocomplete="off" spellcheck="false" placeholder="Empty uses the shared DEMO_KEY">
         <p class="fine">Free and instant at <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">fdc.nal.usda.gov/api-key-signup</a>. The shared key allows about 30 searches an hour; your own key allows 1,000. It stays on this phone.</p></div>
-      <label class="switch" for="set-wrapped"><span><b>Wrapped-style weekly recap</b><small>Your week as full-screen stories. Off shows the same recap as a simple report.</small></span><input type="checkbox" id="set-wrapped" role="switch"></label>
+      <label class="switch" for="set-wrapped"><span><b>Story-style weekly recap</b><small>Your week as full-screen stories. Off shows the same recap as a simple report.</small></span><input type="checkbox" id="set-wrapped" role="switch"></label>
     </div>
     <div class="sec">
       <h2 class="h">Backup &amp; about</h2>
@@ -367,7 +367,8 @@
       </div>
       <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
       <p class="fine" id="rec-about"></p>
-      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28 (public domain). Barcode and brand data: Open Food Facts (Open Database License) and USDA FoodData Central (public domain). Food and container recognizer: OpenAI CLIP, run on your phone with Transformers.js. Optional photo, menu and text recognition: Google Gemini API, with your own key. Label, list and scale reading: Tesseract OCR (Apache 2.0). Estimates are for tracking, not medical advice.</p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28, and USDA FoodData Central (public domain). Product data © <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">Open Database License</a>; product photos under CC BY-SA 3.0. Food and container recognizer: OpenAI CLIP (MIT), run on your phone with Transformers.js (Apache 2.0) and ONNX Runtime (MIT). Label, list and scale reading: Tesseract OCR (Apache 2.0). Optional photo, menu and text recognition: Google Gemini API. Fonts: Archivo and Figtree (SIL Open Font License). Full license texts: <a href="notices.html" target="_blank" rel="noopener">third-party notices</a>.</p>
+      <p class="fine">Restaurant and brand names identify foods only; Munchmark isn't affiliated with or endorsed by any of them. Estimates are for tracking, not medical advice. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="terms.html" target="_blank" rel="noopener">Terms</a></p>
     </div>
   </section>
 </div>
