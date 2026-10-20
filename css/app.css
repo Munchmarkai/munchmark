@@ -594,3 +594,24 @@ em.old{font-style:normal;font-size:10.5px;font-weight:700;text-transform:upperca
 details.help ul.guesses{padding-left:0;color:inherit;font-size:inherit;gap:8px}
 #gem-status{min-height:1.2em}
 .gm{margin-bottom:6px}
+
+/* free on-device vs Gemini (Munchmark Plus) */
+.ai-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:8px}
+.ai-opt{display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.recbox .ai-opt{background:var(--surface-2)}
+.ai-opt b{font-weight:650}
+.ai-opt small{display:block;color:var(--muted);font-size:12.5px;line-height:1.4}
+.ai-opt .tag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);margin-left:4px}
+.ai-opt .btn{align-self:flex-start}
+.ai-opt .row2{display:flex;flex-wrap:wrap;gap:8px}
+.field .ai-opt.pick{flex-direction:row;align-items:flex-start;gap:10px;cursor:pointer;font-size:inherit;font-weight:inherit}
+.ai-opt.pick input{flex:none;width:20px;height:20px;margin:1px 0 0;accent-color:var(--accent)}
+.ai-opt.pick:has(input:checked){border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.ai-opt.pick span small{margin-top:4px}
+.plus-box{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+#plus-buy{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+#plus-buy:empty{display:none}
+#ai-field details.help{margin-top:4px}
+#ai-field details.help label{display:block;margin-top:8px}
+.ai-opt small .price{color:var(--ink);font-weight:650}
+a.btn{text-decoration:none}

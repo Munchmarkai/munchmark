@@ -1,9 +1,15 @@
-// Shared Gemini server for everyone who opens this copy of the app (see "Share Gemini" in README.md).
-// Paste your Cloudflare Worker address between the quotes, for example
-//   export const GEMINI_PROXY = 'https://macro-lens-gemini.yourname.workers.dev';
-// Leave it empty and each person adds their own free key in Body → Settings instead.
+// Munchmark settings for everyone who opens this copy of the app.
+
+// The Munchmark Plus server (the Cloudflare Worker in worker/gemini-proxy.js). Plus members' Gemini requests go
+// through it; free users never touch it. Leave it empty to turn Plus off (each person can still add their own key).
 export const GEMINI_PROXY = 'https://macro-lens-gemini.athanbriggs.workers.dev';
 
-// Gemini requests one phone may send through the shared server per day,
-// so one person can't use up the free daily quota everyone shares.
-export const SHARED_DAILY_LIMIT = 60;
+// The Lemon Squeezy checkout link for Plus, like 'https://munchmark.lemonsqueezy.com/buy/…'.
+// While it's empty, the app says Plus is coming soon.
+export const PLUS_CHECKOUT_URL = '';
+
+// The price line shown next to the Gemini option.
+export const PLUS_PRICE = '$1.99 a month or $12 a year';
+
+// Gemini requests one Plus member may send per day (fair use). Keep it the same as DAILY_LIMIT on the server.
+export const PLUS_DAILY_LIMIT = 15;

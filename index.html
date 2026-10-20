@@ -128,7 +128,7 @@
         <textarea id="type-in" placeholder="e.g. 2 eggs, 2 slices toast, 1 tbsp butter&#10;6 oz chicken breast with 1 cup rice&#10;Barebells cookies and cream bar · big mac and large fries from McDonald's&#10;Greek yogurt 170 g (pantry)"></textarea>
         <div class="row2"><button type="button" class="btn primary" data-action="type-add">Add to plate</button><button type="button" class="btn ghost" data-action="gm-type" id="gm-type-btn" hidden>Ask Gemini</button></div>
         <p class="err" id="type-msg" hidden></p>
-        <p class="fine">Name a brand to look it up online. Add <b>(pantry)</b> after a food to use the exact item in your pantry. With a Gemini key, anything the app can’t find goes to Gemini.</p>
+        <p class="fine">Name a brand to look it up online. Add <b>(pantry)</b> after a food to use the exact item in your pantry. With Munchmark Plus, anything the app can’t find goes to Gemini.</p>
       </div>
       <div class="field">
         <span class="lbl">Have the nutrition label?</span>
@@ -348,11 +348,24 @@
     </div>
     <div class="sec">
       <h2 class="h">Settings</h2>
-      <div class="field"><label for="set-gem">Gemini API key <span class="hint">optional · free · much better photo recognition</span></label>
-        <div class="fix-row"><input type="password" id="set-gem" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
-        <p class="fine" id="gem-status" aria-live="polite"></p>
-        <label class="switch" for="set-gemshared" id="gemshared-row" hidden><span><b>Use the app’s shared Gemini</b><small>Sends photos, menus and unknown typed foods to Google Gemini through this app’s server.</small></span><input type="checkbox" id="set-gemshared" role="switch"></label>
-        <p class="fine">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. With it, Google Gemini reads your food photos (brands, flavors, restaurant items, portions), menus and anything typed the app can’t find. On the free tier Google may use what you send to improve its products, and people may review it, so don’t send anything private. Google’s terms require you to be 18 or older. The key stays on this phone and isn’t put in backups.</p></div>
+      <div class="field" id="ai-field"><span class="lbl">Food recognition <span class="hint">photos, menus and foods the app can’t find</span></span>
+        <div class="ai-opts" role="radiogroup" aria-label="Food recognition">
+          <label class="ai-opt pick" for="ai-device"><input type="radio" name="ai-mode" value="device" id="ai-device"><span><b>On-device</b> <span class="tag">Free</span><small>The downloadable recognizer, label reader and food database, all on this phone. Private and works offline, but rougher on brands, restaurant food and portions.</small></span></label>
+          <label class="ai-opt pick" for="ai-plus" id="ai-plus-opt"><input type="radio" name="ai-mode" value="plus" id="ai-plus"><span><b>Google Gemini</b> <span class="tag">Plus</span><small><span class="price" id="plus-price"></span> Much better at brands, flavors, restaurant items, menus and portions. Up to 15 requests a day. For people 18 and older.</small></span></label>
+        </div>
+        <div id="plus-box" class="plus-box" hidden>
+          <label for="set-plus">Plus license key or free code</label>
+          <div class="fix-row"><input type="password" id="set-plus" autocomplete="off" spellcheck="false" placeholder="License key from your receipt email, or a code"><button type="button" class="btn primary sm" data-action="plus-check">Activate</button></div>
+          <p class="fine" id="plus-status" aria-live="polite"></p>
+          <p class="fine" id="plus-buy"></p>
+          <p class="fine">Activating confirms you’re 18 or older and agree that photos, menus and typed foods you ask about go to Google Gemini through Munchmark’s server. On Plus, Google’s paid tier doesn’t use them to improve its products. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="terms.html" target="_blank" rel="noopener">Terms</a></p>
+        </div>
+        <details class="help"><summary>Advanced: use your own Gemini API key</summary>
+          <label for="set-gem">Your Gemini API key</label>
+          <div class="fix-row"><input type="password" id="set-gem" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
+          <p class="fine" id="gem-status" aria-live="polite"></p>
+          <p class="fine">Instead of Plus, you can use your own key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Requests then go straight from this phone to Google under your own Google account’s terms; on Google’s free tier Google may use them to improve its products, and people may review them. Google’s terms require you to be 18 or older. The key stays on this phone and isn’t put in backups.</p>
+        </details></div>
       <div class="field"><label for="set-fdc">USDA FoodData Central key <span class="hint">optional, for online label search</span></label>
         <input type="text" id="set-fdc" autocomplete="off" spellcheck="false" placeholder="Empty uses the shared DEMO_KEY">
         <p class="fine">Free and instant at <a href="https://fdc.nal.usda.gov/api-key-signup" target="_blank" rel="noopener">fdc.nal.usda.gov/api-key-signup</a>. The shared key allows about 30 searches an hour; your own key allows 1,000. It stays on this phone.</p></div>
@@ -367,7 +380,7 @@
       </div>
       <input type="file" id="in-backup" accept="application/json,.json" class="vh" tabindex="-1">
       <p class="fine" id="rec-about"></p>
-      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28, and USDA FoodData Central (public domain). Product data © <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">Open Database License</a>; product photos under CC BY-SA 3.0. Food and container recognizer: OpenAI CLIP (MIT), run on your phone with Transformers.js (Apache 2.0) and ONNX Runtime (MIT). Label, list and scale reading: Tesseract OCR (Apache 2.0). Optional photo, menu and text recognition: Google Gemini API. Fonts: Archivo and Figtree (SIL Open Font License). Full license texts: <a href="notices.html" target="_blank" rel="noopener">third-party notices</a>.</p>
+      <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28, and USDA FoodData Central (public domain). Product data © <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">Open Database License</a>; product photos under CC BY-SA 3.0. Food and container recognizer: OpenAI CLIP (MIT), run on your phone with Transformers.js (Apache 2.0) and ONNX Runtime (MIT). Label, list and scale reading: Tesseract OCR (Apache 2.0). Photo, menu and text recognition on Munchmark Plus: Google Gemini API. Fonts: Archivo and Figtree (SIL Open Font License). Full license texts: <a href="notices.html" target="_blank" rel="noopener">third-party notices</a>.</p>
       <p class="fine">Restaurant and brand names identify foods only; Munchmark isn't affiliated with or endorsed by any of them. Estimates are for tracking, not medical advice. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="terms.html" target="_blank" rel="noopener">Terms</a></p>
     </div>
   </section>

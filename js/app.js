@@ -12,7 +12,7 @@ import { parseDiet, applyDiet } from './diet.js';
 import { waterGoal, estimate, bloatLabel, COMPONENT_LABEL } from './water.js';
 import { CHAINS, CHAIN_BY, KIND_LABEL, initRestaurants, menuFor, genericMenu, detectChain, chainByName, kindFromName, rankMenu, portionsOf, nutOf, suggest, parseMenuText, parseMenuWords, estimateMenuItem, stripChainName, menuRole } from './restaurants.js';
 import * as G from './gemini.js';
-import { GEMINI_PROXY as PROXY_SET, SHARED_DAILY_LIMIT } from './config.js';
+import { GEMINI_PROXY as PROXY_SET, PLUS_CHECKOUT_URL, PLUS_PRICE, PLUS_DAILY_LIMIT } from './config.js';
 // the example address from the instructions isn't a real server
 const GEMINI_PROXY = ((v) => !v || /yourname\.workers\.dev/i.test(v) ? '' : /^https?:\/\//i.test(v) ? v : 'https://' + v)(String(PROXY_SET || '').trim());
 import { searchOnline, webSearchURL, setFdcKey } from './online.js';
@@ -465,7 +465,7 @@ async function setPhoto(file){
     if (S.photo) URL.revokeObjectURL(S.photo.url);
     S.photo = p; S.rec.results = null; S.rec.added = new Set();
     S.rest = {chain:null, src:'', ask:null, manual:null, no:false, filter:''};
-    S.gm.photo = sharedAsk() ? {ph:p, consent:true} : null;
+    S.gm.photo = sharedAsk() ? {ph:p, consent:true} : choiceAsk() ? {ph:p, choice:true} : null;
     renderPhoto();
     runPackaged();
     if (gemOn()) geminiPhoto();
@@ -807,7 +807,7 @@ function saveBodyFat(){
 /* ---------- backup ---------- */
 function exportBackup(){
   // the Gemini key stays on this phone and out of backup files
-  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:{...S.profile, settings:{...(S.profile.settings || {}), gemKey:undefined, gemInfo:undefined}}, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
+  const data = JSON.stringify({app:'macro-lens', version:2, exported:new Date().toISOString(), profile:{...S.profile, settings:{...(S.profile.settings || {}), gemKey:undefined, gemInfo:undefined, plusKey:undefined, plusInfo:undefined}}, days:S.days, pantry:S.pantry, recipes:S.recipes.map(r => ({...r, items:r.items.map(stripItem)})), containers:S.containers, myFoods:S.myFoods});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([data], {type:'application/json'}));
   a.download = `munchmark-backup-${dayKey()}.json`;
@@ -821,7 +821,7 @@ async function importBackup(file){
     if (!j || j.app !== 'macro-lens' || typeof j.days !== 'object') throw 0;
     let n = 0;
     for (const [k, v] of Object.entries(j.days)) { if (v && v.date === k && Array.isArray(v.entries)) { S.days[k] = v; saveDay(k); n++; } }
-    if (j.profile && typeof j.profile === 'object') { const keep = {gemKey:settings().gemKey, gemInfo:settings().gemInfo}; S.profile = j.profile; if (keep.gemKey) Object.assign(settings(), keep); saveProfile(); fillBodyForm(); }
+    if (j.profile && typeof j.profile === 'object') { const keep = {gemKey:settings().gemKey, gemInfo:settings().gemInfo, plusKey:settings().plusKey, plusInfo:settings().plusInfo, gemShared:settings().gemShared}; S.profile = j.profile; Object.assign(settings(), Object.fromEntries(Object.entries(keep).filter(([, v]) => v != null && v !== ''))); saveProfile(); fillBodyForm(); }
     if (Array.isArray(j.pantry)) { S.pantry = j.pantry; savePantry(); }
     if (Array.isArray(j.recipes)) { S.recipes = j.recipes; saveRecipes(); }
     if (Array.isArray(j.containers)) { S.containers = j.containers; saveContainers(); }
@@ -2291,7 +2291,7 @@ function labelFood(){
 function renderTypeExtra(){
   const el = $('#type-extra'); if (!el) return;
   const o = S.online;
-  const gb = $('#gm-type-btn'); if (gb) gb.hidden = !(gemOn() || sharedAsk());
+  const gb = $('#gm-type-btn'); if (gb) gb.hidden = !(gemOn() || sharedAsk() || choiceAsk());
   let html = labelCardHTML() + gmSectionHTML(S.gm.type, 'type', 'Gemini found');
   if (o.busy) html += `<div class="recbox"><span><span class="spin"></span> <b>Searching online for “${esc(o.q)}”…</b></span></div>`;
   else if (o.items) {
@@ -2312,24 +2312,32 @@ async function runOnline(q){
   renderTypeExtra();
 }
 
-/* ---------- Gemini (optional, with the person's own free key) ---------- */
+/* ---------- Gemini: Munchmark Plus (paid) or the person's own key; free users stay on-device ---------- */
 const gemKey = () => String(settings().gemKey || '').trim();
-// 'key': this phone's own key · 'shared': the app's shared server from config.js · '': neither
-const gemMode = () => gemKey() ? 'key' : GEMINI_PROXY ? 'shared' : '';
-const gemAuth = () => gemKey() ? {key:gemKey()} : {proxy:GEMINI_PROXY, limit:SHARED_DAILY_LIMIT};
-// with the shared server, nothing goes to Google until the person says yes once
-const sharedAsk = () => gemMode() === 'shared' && settings().gemShared == null && navigator.onLine;
-const gemOn = () => navigator.onLine && (gemMode() === 'key' || (gemMode() === 'shared' && settings().gemShared === true));
+const plusKey = () => String(settings().plusKey || '').trim();
+const plusOffered = () => !!GEMINI_PROXY;
+// 'key': this phone's own Gemini key (advanced) · 'plus': a Munchmark Plus license · '': free, on-device only
+const gemMode = () => gemKey() ? 'key' : plusKey() && GEMINI_PROXY ? 'plus' : '';
+// paid licenses get the fair-use limit; the owner's free codes have none (0)
+const plusLimit = () => { const i = settings().plusInfo; return i?.kind === 'code' ? 0 : i?.daily || PLUS_DAILY_LIMIT; };
+const gemAuth = () => gemKey() ? {key:gemKey()} : {proxy:GEMINI_PROXY, license:plusKey(), limit:plusLimit()};
+// with Plus, nothing goes to Google until the person has confirmed once (activating does that)
+const sharedAsk = () => gemMode() === 'plus' && settings().gemShared == null && navigator.onLine;
+const gemOn = () => navigator.onLine && (gemMode() === 'key' || (gemMode() === 'plus' && settings().gemShared === true));
+// free users pick once: the free on-device recognizer, or Gemini with Plus
+const choiceAsk = () => !gemMode() && plusOffered() && settings().aiChoice == null && navigator.onLine;
 const SRC_WORD = {label:'read from the label', official:'published numbers', menu:'calories from the menu', estimate:'estimate'};
 const SRC_TAG = {label:'Label', official:'Published', menu:'Menu', estimate:'Estimate'};
 async function photoB64(file, max){ return (await smallPhoto(file, max)).split(',')[1]; }
 const portionLabel = s => String(s || '').replace(/\s*\(\s*\d+(\.\d+)?\s*(g|ml)\s*\)\s*$/i, '').trim() || String(s || '1 serving');
 const gmWords = () => { const st = S.gm.photo; return st && st.ph === S.photo && st.items ? st.items.map(x => `${x.restaurant} ${x.name}`).join(' ') : ''; };
 function gemErrText(e){
+  // the Plus server turned the key or code down (switched off, expired): say so in Settings too
+  if (e && e.kind === 'plus' && e.own && plusKey() && e.status === 402 && settings().plusInfo && !settings().plusInfo.off) { settings().plusInfo.off = e.message; saveProfile(); }
   if (e && e.own) return e.message;
-  if (e && e.shared && e.kind === 'key') return 'The app’s shared Gemini server isn’t working right now.';
-  if (e && e.shared && e.kind === 'net') return 'Couldn’t reach the app’s shared Gemini server.';
-  if (e && e.shared && e.kind === 'rate' && e.daily) return 'The app’s free Gemini quota for today is used up. It resets at midnight Pacific time.';
+  if (e && e.shared && e.kind === 'key') return 'The Munchmark Plus server isn’t working right now.';
+  if (e && e.shared && e.kind === 'net') return 'Couldn’t reach the Munchmark Plus server.';
+  if (e && e.shared && e.kind === 'rate') return e.daily ? 'Gemini’s limit for today is used up. More tomorrow.' : 'Gemini got too many requests this minute. Try again shortly.';
   switch (e && e.kind) {
     case 'key': return 'Gemini didn’t accept your key. Check it in Body → Settings.';
     case 'rate': return e.daily ? 'Gemini’s free daily limit is used up. It resets at midnight Pacific time.' : 'Gemini got too many requests this minute. Try again shortly.';
@@ -2366,6 +2374,7 @@ function gmRowHTML(x, i, ctx, added){
 }
 function gmSectionHTML(st, ctx, title){
   if (!st) return '';
+  if (st.choice) return choiceHTML(ctx);
   if (st.consent) return consentHTML(ctx);
   if (st.busy) return `<div class="recbox"><span><span class="spin"></span> <b>${esc(st.step || 'Asking Gemini…')}</b></span></div>`;
   if (st.err) return `<p class="notice">${esc(st.err)}${ctx === 'photo' ? ' The on-device results are below.' : ''} <button type="button" class="linkbtn" data-action="gm-retry" data-ctx="${ctx}">Try again</button></p>`;
@@ -2395,15 +2404,28 @@ async function labelMatch(st, done){
     } catch {}
   }
 }
+function plusBuyHTML(cls = 'btn primary sm'){
+  return PLUS_CHECKOUT_URL ? `<a class="${cls}" href="${esc(PLUS_CHECKOUT_URL)}" target="_blank" rel="noopener">Get Plus</a>` : `<button type="button" class="${cls}" data-action="plus-soon">Get Plus</button>`;
+}
+// the free on-device recognizer, or Gemini with Munchmark Plus
+function choiceHTML(ctx){
+  return `<div class="recbox aichoice"><span><b>Two ways to recognize food</b><br><span class="sub">Pick one. You can switch anytime in Body → Settings.</span></span>
+    <div class="ai-opts">
+      <div class="ai-opt"><span><b>On-device</b> <span class="tag">Free</span></span><small>Runs on this phone. Private and works offline, but rougher on brands, restaurant food and portions.</small>
+        <button type="button" class="btn ghost sm" data-action="ai-choose" data-v="device" data-ctx="${ctx}">Use free on-device</button></div>
+      <div class="ai-opt"><span><b>Google Gemini</b> <span class="tag">Plus</span></span><small>Much better at brands, restaurant items, menus and portions. ${esc(PLUS_PRICE)}, up to ${PLUS_DAILY_LIMIT} a day. 18+.</small>
+        <div class="row2">${plusBuyHTML()}<button type="button" class="btn ghost sm" data-action="ai-choose" data-v="plus" data-ctx="${ctx}">I have a key or code</button></div></div>
+    </div></div>`;
+}
 function consentHTML(ctx){
   const what = ctx === 'photo' ? 'this photo and your details' : ctx === 'eo' ? 'menu photos and restaurant names' : 'what you typed';
-  return `<div class="recbox gm-ask"><span><b>Recognize with Google Gemini?</b><br><span class="sub">Munchmark can send ${what} to Google Gemini, which is much better at brands, restaurant food and portions. Google may use what’s sent to improve its products, so don’t send anything private. Google’s terms allow this only for people 18 or older. You can change this in Body → Settings. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></span></span>
+  return `<div class="recbox gm-ask"><span><b>Recognize with Google Gemini?</b><br><span class="sub">Munchmark Plus sends ${what} to Google Gemini through Munchmark’s server. On Plus, Google’s paid tier doesn’t use it to improve its products. Google’s terms allow this only for people 18 or older. You can change this in Body → Settings. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></span></span>
     <div class="row2"><button type="button" class="btn primary sm" data-action="gm-consent" data-v="1" data-ctx="${ctx}">I’m 18+, use Gemini</button><button type="button" class="btn ghost sm" data-action="gm-consent" data-v="0" data-ctx="${ctx}">Keep on-device</button></div></div>`;
 }
 function gemNote(){ return String($('#photo-desc')?.value ?? S.desc.text ?? '').split(/[,;\n]+/).map(x => x.trim()).filter(c => c && pantryTagged(c) == null).join(', ').slice(0, 400); }
 async function geminiPhoto(force = false){
   const ph = S.photo; if (!ph) return;
-  if (!gemOn()) { if (sharedAsk()) { S.gm.photo = {ph, consent:true}; renderPhoto(); } return; }
+  if (!gemOn()) { if (sharedAsk()) { S.gm.photo = {ph, consent:true}; renderPhoto(); } else if (choiceAsk()) { S.gm.photo = {ph, choice:true}; renderPhoto(); } return; }
   const note = gemNote(), cur = S.gm.photo;
   if (!force && cur && cur.ph === ph && cur.note === note && (cur.busy || cur.items)) return;
   const st0 = {busy:true, ph, note, step:note ? 'Asking Gemini about the photo and your details…' : 'Asking Gemini what’s in the photo…'};
@@ -2424,7 +2446,8 @@ async function geminiText(q){
   q = String(q || '').trim(); if (!q) { $('#type-in')?.focus(); return; }
   if (!gemOn()) {
     if (sharedAsk()) { S.gm.type = {consent:true, q}; renderTypeExtra(); return; }
-    toast(!navigator.onLine ? 'You’re offline. Gemini needs a connection.' : gemMode() === 'shared' ? 'Gemini is off on this phone. Turn it on in Body → Settings.' : 'Add your Gemini key in Body → Settings first'); return;
+    if (choiceAsk()) { S.gm.type = {choice:true, q}; renderTypeExtra(); return; }
+    toast(!navigator.onLine ? 'You’re offline. Gemini needs a connection.' : gemMode() === 'plus' ? 'Gemini is off on this phone. Turn it on in Body → Settings.' : 'Gemini comes with Munchmark Plus. See Body → Settings.'); return;
   }
   const st0 = {busy:true, q, step:`Asking Gemini about “${q.length > 60 ? q.slice(0, 58) + '…' : q}”…`};
   S.gm.type = st0; renderTypeExtra();
@@ -2453,32 +2476,74 @@ function gmAdd(ctx, idx){
 }
 let gemTesting = false;
 async function gemTest(){
-  const el = $('#gem-status'), mode = gemMode(); if (!el || gemTesting) return;
-  if (!mode) { renderGemStatus(); return; }
+  const el = $('#gem-status'); if (!el || gemTesting) return;
+  if (!gemKey()) { renderGemStatus(); return; }
   if (!navigator.onLine) { el.textContent = 'You’re offline. Connect to test the key.'; return; }
   el.innerHTML = '<span class="spin"></span> Testing your key…';
   gemTesting = true;
   try {
-    const t = await G.testKey(gemAuth());
+    const t = await G.testKey({key:gemKey()});
     settings().gemInfo = {model:t.model, search:t.search, t:Date.now()}; saveProfile();
-    renderGemStatus(t.kcal); toast(mode === 'shared' ? 'The shared Gemini server works' : `Gemini connected · ${G.modelName(t.model)}`);
+    renderGemStatus(t.kcal); toast(`Gemini connected · ${G.modelName(t.model)}`);
   } catch (e) {
     console.warn(e);
     el.textContent = gemErrText(e) + (['model', 'bad'].includes(e.kind) && e.message ? ` Google said: “${String(e.message).slice(0, 160)}”` : '');
   } finally { gemTesting = false; }
 }
-function renderGemStatus(kcal){
-  const el = $('#gem-status'); if (!el) return;
-  const i = settings().gemInfo, n = G.usedToday();
-  const row = $('#gemshared-row'), mode = gemMode();
-  if (row) { row.hidden = mode !== 'shared'; $('#set-gemshared').checked = settings().gemShared === true; }
-  if (!mode) { el.textContent = 'Not set. Photos, menus and typing use the on-device tools.'; return; }
-  if (mode === 'shared') {
-    el.textContent = `This app has a shared Gemini server${settings().gemShared === false ? ', turned off on this phone' : settings().gemShared ? '' : ' (it asks before the first photo)'}.${i ? ` ${G.modelName(i.model)}, Google Search ${i.search ? 'on' : 'off'}.` : ''}${kcal ? ` Test answer: a Big Mac is about ${int(kcal)} kcal.` : ''} ${Math.min(n, SHARED_DAILY_LIMIT)} of ${SHARED_DAILY_LIMIT} requests used today on this phone. Paste your own key to use your own free quota instead.`;
-    return;
+let plusChecking = false;
+async function plusActivate(){
+  const el = $('#plus-status'), v = ($('#set-plus')?.value || '').trim(); if (!el || plusChecking) return;
+  if (!v) { el.textContent = 'Paste the license key from your Munchmark Plus receipt email, or a free code.'; $('#set-plus')?.focus(); return; }
+  if (!navigator.onLine) { el.textContent = 'You’re offline. Connect to activate Plus.'; return; }
+  el.innerHTML = '<span class="spin"></span> Checking your license…';
+  plusChecking = true;
+  try {
+    const r = await G.checkPlus({proxy:GEMINI_PROXY, license:v});
+    Object.assign(settings(), {plusKey:v, plusInfo:{kind:r.kind, plan:r.plan, expires:r.expires, daily:r.daily, t:Date.now()}, gemShared:true, aiChoice:'plus'});
+    G.forget(); saveProfile(); plusChecking = false;
+    const q = S.gm.type?.choice ? S.gm.type.q : '';
+    if (S.gm.type?.choice) S.gm.type = null;
+    renderGemStatus(); renderTypeExtra(); toast('Munchmark Plus is on. Gemini will recognize your food.');
+    if (S.photo && (S.gm.photo?.choice || !S.gm.photo)) { S.gm.photo = null; geminiPhoto(true); }
+    if (q) geminiText(q);
+  } catch (e) {
+    console.warn(e); plusChecking = false;
+    el.textContent = ['net', 'server'].includes(e.kind) && !e.own ? 'Couldn’t check the license right now. Try again in a minute.' : gemErrText(e);
   }
-  if (!i) { el.textContent = 'Key saved. Tap Test to check it.'; return; }
-  el.textContent = `✓ Connected: ${G.modelName(i.model)}. Google Search ${i.search ? 'on' : 'off (it isn’t on the free tier for this key)'}.${kcal ? ` Test answer: a Big Mac is about ${int(kcal)} kcal.` : ''} ${n} request${n === 1 ? '' : 's'} today.`;
+}
+function setAiChoice(v){
+  const st = settings(); st.aiChoice = v;
+  if (plusKey()) st.gemShared = v === 'plus';
+  saveProfile();
+  if (S.gm.photo?.choice || (v === 'device' && S.gm.photo && !S.gm.photo.items)) S.gm.photo = null;
+  if (S.gm.type?.choice) S.gm.type = null;
+  renderGemStatus(); renderTypeExtra(); if (S.photo) renderPhoto();
+}
+const shortDate = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric', timeZone:'UTC'}); };
+function renderGemStatus(kcal){
+  const st = settings(), i = st.gemInfo, n = G.usedToday(), mode = gemMode();
+  const plusPick = mode === 'plus' ? st.gemShared === true : st.aiChoice === 'plus';
+  const dev = $('#ai-device'), plus = $('#ai-plus');
+  if (dev && plus) { plus.checked = plusOffered() && plusPick && mode !== 'key'; dev.checked = !plus.checked && mode !== 'key'; }
+  const opt = $('#ai-plus-opt'); if (opt) opt.hidden = !plusOffered();
+  const pt = $('#plus-price'); if (pt) pt.textContent = PLUS_PRICE ? `${PLUS_PRICE}.` : '';
+  const box = $('#plus-box'); if (box) box.hidden = !plusOffered() || !plus?.checked;
+  const pk = $('#set-plus'); if (pk && document.activeElement !== pk) pk.value = plusKey();
+  const ps = $('#plus-status');
+  if (ps && !plusChecking) {
+    const info = st.plusInfo;
+    const lim = plusLimit(), until = info?.expires ? shortDate(info.expires) : '';
+    const used = lim ? `${Math.min(n, lim)} of ${lim} Gemini requests used today.` : `No daily limit. ${n} Gemini request${n === 1 ? '' : 's'} today.`;
+    ps.textContent = !plusKey() ? '' : info?.off ? `${info.off} Paste it again and tap Activate to recheck.`
+      : `✓ ${info?.kind === 'code' ? `${info.plan || 'Free code'} is active on this phone` : `${info?.plan || 'Munchmark Plus'} is active on this phone${until ? ` until ${until} (it renews unless canceled)` : ''}`}. ${used}${i ? ` ${G.modelName(i.model)}, Google Search ${i.search ? 'on' : 'off'}.` : ''}`;
+  }
+  const buy = $('#plus-buy');
+  if (buy) buy.innerHTML = plusKey() ? (st.plusInfo?.kind === 'code' ? 'To use the code on another phone, paste it there too.' : 'Manage or cancel Plus from your receipt email. To move Plus to another phone, paste the same key there.')
+    : PLUS_CHECKOUT_URL ? `${plusBuyHTML('btn ghost sm')} <span>${esc(PLUS_PRICE)}. The license key arrives by email; paste it above.</span>` : `Munchmark Plus (${esc(PLUS_PRICE)}) is coming soon. The on-device recognizer is free in the meantime.`;
+  const el = $('#gem-status'); if (!el) return;
+  if (!gemKey()) { el.textContent = 'Not set.'; return; }
+  if (!i) { el.textContent = 'Key saved. It’s used instead of Plus. Tap Test to check it.'; return; }
+  el.textContent = `✓ Your own key is in use instead of Plus: ${G.modelName(i.model)}. Google Search ${i.search ? 'on' : 'off (it isn’t on the free tier for this key)'}.${kcal ? ` Test answer: a Big Mac is about ${int(kcal)} kcal.` : ''} ${n} request${n === 1 ? '' : 's'} today.`;
 }
 
 /* ---------- eating out ---------- */
@@ -2580,7 +2645,7 @@ function renderEatOut(el){
       <div class="grid2"><div class="field"><label for="eo-kcal">Calories</label><div class="unit"><input type="number" id="eo-kcal" inputmode="numeric" value="${esc(E.tKcal || T0.kcal)}"><em>kcal</em></div></div>
         <div class="field"><label for="eo-p">Protein at least</label><div class="unit"><input type="number" id="eo-p" inputmode="numeric" value="${esc(E.tP || T0.protein)}"><em>g</em></div></div></div>
       <p class="fine">${esc(T0.note)}</p></div>
-    ${sharedAsk() ? consentHTML('eo') : ''}
+    ${sharedAsk() ? consentHTML('eo') : choiceAsk() && sg ? choiceHTML('eo') : ''}
     ${E.busy ? `<div class="recbox"><span><span class="spin"></span> <b id="eo-step">${esc(E.step)}</b></span></div>` : ''}
     ${E.err ? `<p class="err">${esc(E.err)}</p>` : ''}
     ${sg ? `<div class="sec"><div class="sec-head"><h2 class="h">${esc(title)}</h2>${E.menu ? '<button type="button" class="linkbtn" data-action="eo-clear-menu">Clear menu</button>' : ''}</div><p class="fine">${esc(note)}</p>
@@ -2614,7 +2679,7 @@ function setTab(t){
   if (t !== 'scan') bcStop();
   if (t === 'today') renderToday();
   if (t === 'scan') { renderScan(); if (S.rec.state === 'unknown') checkRecognizer(); }
-  if (t === 'body') renderBody();
+  if (t === 'body') { renderBody(); renderGemStatus(); }
   if (t === 'week') renderWeek();
   if (t === 'pantry') { renderPantry(); if (S.rec.state === 'unknown') checkRecognizer(); }
   if (t !== 'scan' && S.bcTarget && t !== 'pantry') S.bcTarget = null;
@@ -2757,11 +2822,18 @@ document.addEventListener('click', e => {
     case 'gm-type': geminiText($('#type-in').value); break;
     case 'gm-consent': {
       const yes = b.dataset.v === '1', ctx = b.dataset.ctx;
-      settings().gemShared = yes; saveProfile(); renderGemStatus(); renderTypeExtra();
+      settings().gemShared = yes; if (!yes) settings().aiChoice = 'device'; saveProfile(); renderGemStatus(); renderTypeExtra();
       if (ctx === 'photo') { if (yes) geminiPhoto(true); else { S.gm.photo = null; renderPhoto(); } }
       else if (ctx === 'type') { const q = S.gm.type?.q; S.gm.type = null; if (yes) geminiText(q); else renderTypeExtra(); }
       else { renderMeals(); toast(yes ? 'Gemini is on. Tap Show ideas or snap the menu again.' : 'Keeping everything on this phone'); }
       break; }
+    case 'ai-choose': {
+      const v = b.dataset.v;
+      if (v === 'device') { setAiChoice('device'); toast('Using the free on-device recognizer. Switch anytime in Body → Settings.'); if (b.dataset.ctx === 'eo') renderMeals(); }
+      else { setAiChoice('plus'); if (b.dataset.ctx === 'eo') renderMeals(); setTab('body'); requestAnimationFrame(() => { const f = $('#set-plus'); f?.scrollIntoView({behavior:reduced() ? 'auto' : 'smooth', block:'center'}); f?.focus({preventScroll:true}); }); }
+      break; }
+    case 'plus-soon': toast('Munchmark Plus is coming soon. The on-device recognizer is free in the meantime.'); break;
+    case 'plus-check': plusActivate(); break;
     case 'gem-test': { const v = $('#set-gem').value.trim(); if (v !== gemKey()) { settings().gemKey = v; settings().gemInfo = null; G.forget(); saveProfile(); } gemTest(); break; }
     case 'eo-log': { const c = S.eo.sg?.[b.dataset.list]?.[Number(b.dataset.i)]; if (c) logCombo(c); break; }
     /* water */
@@ -2903,7 +2975,12 @@ document.addEventListener('change', e => {
     if (v) gemTest(); else { renderGemStatus(); toast('Gemini key removed'); }
     return;
   }
-  if (t.id === 'set-gemshared') { settings().gemShared = t.checked; saveProfile(); renderGemStatus(); renderTypeExtra(); toast(t.checked ? 'Gemini is on for this phone' : 'Gemini is off. Everything stays on this phone.'); return; }
+  if (t.name === 'ai-mode') { setAiChoice(t.value); if (S.tab === 'eatout') renderMeals(); toast(t.value === 'plus' ? (plusKey() ? 'Gemini is on for this phone' : 'Paste your Plus license key to turn Gemini on') : 'Using the free on-device recognizer. Everything stays on this phone.'); return; }
+  if (t.id === 'set-plus') {
+    if (!t.value.trim() && plusKey()) { Object.assign(settings(), {plusKey:'', plusInfo:null}); G.forget(); saveProfile(); renderGemStatus(); renderTypeExtra(); toast('Plus license removed from this phone'); }
+    else if (t.value.trim() && t.value.trim() !== plusKey()) plusActivate();
+    return;
+  }
   if (t.dataset.gmSrc) { const [ctx, i] = t.dataset.gmSrc.split(':'), x = S.gm[ctx]?.items?.[Number(i)]; if (x) { x.useDb = t.value === 'db'; if (ctx === 'photo') renderPhoto(); else renderTypeExtra(); } return; }
   if (t.matches('[data-rest-pick]')) { if (t.value) { S.rest.manual = t.value; S.rest.no = false; updateRestaurant(); } return; }
   if (t.id === 'eo-q' && chainByName(t.value)) { eoGo(); return; }

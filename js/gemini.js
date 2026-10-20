@@ -44,12 +44,13 @@ export function classify(status, body){
 const retryDelay = body => { const r = ((body && body.error && body.error.details) || []).find(d => /RetryInfo/.test(d['@type'] || '')); const s = r ? parseFloat(r.retryDelay) : NaN; return Number.isFinite(s) ? s : null; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// with a personal key the phone talks to Google; otherwise it goes through the app's shared server, which adds the key
-async function post(key, proxy, model, body, timeoutMs){
+// with a personal key the phone talks to Google; with Munchmark Plus it goes through the Plus server, which checks the license and adds the key
+const rootOf = proxy => { const base = String(proxy).trim().replace(/\/+$/, ''); return /^https?:\/\//i.test(base) ? base : 'https://' + base; };
+async function post(key, proxy, model, body, timeoutMs, license = ''){
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
-  const base = String(proxy).trim().replace(/\/+$/, ''), root = /^https?:\/\//i.test(base) ? base : 'https://' + base;   // an address typed without https:// still works
+  const root = rootOf(proxy);   // an address typed without https:// still works
   const url = key ? `${API}${model}:generateContent` : `${root}/v1beta/models/${model}:generateContent`;
-  const headers = key ? {'Content-Type':'application/json', 'x-goog-api-key':key} : {'Content-Type':'application/json'};
+  const headers = key ? {'Content-Type':'application/json', 'x-goog-api-key':key} : {'Content-Type':'application/json', 'X-Munchmark-License':license};
   try {
     const r = await fetch(url, {method:'POST', headers, body:JSON.stringify(body), signal:ctl.signal});
     let j = null; try { j = await r.json(); } catch {}
@@ -60,9 +61,10 @@ async function post(key, proxy, model, body, timeoutMs){
 }
 
 // One request: walks the plan from the remembered model, falls back when a model or Search isn't available to this key.
-export async function ask({key = '', proxy = '', limit = 0, system, parts, fresh = false, timeoutMs = 60000}){
+export async function ask({key = '', proxy = '', license = '', limit = 0, system, parts, fresh = false, timeoutMs = 60000}){
   if (!key && !proxy) throw new GeminiError('key', 'No Gemini key.');
-  if (!key && limit && usedToday() >= limit) throw new GeminiError('rate', `This phone has used its ${limit} shared Gemini requests for today. More tomorrow.`, {own:true, daily:true});
+  if (!key && !license) throw new GeminiError('plus', 'Gemini is part of Munchmark Plus.', {own:true, shared:true});
+  if (!key && limit && usedToday() >= limit) throw new GeminiError('rate', `You’ve used today’s ${limit} Gemini requests on this phone. More tomorrow; the on-device recognizer still works.`, {own:true, daily:true, shared:true});
   const who = key || 'shared:' + proxy;
   if (fresh) forget();
   const cap = capGet(who);
@@ -74,9 +76,8 @@ export async function ask({key = '', proxy = '', limit = 0, system, parts, fresh
     else body.generationConfig.responseMimeType = 'application/json';
     let res = null;
     for (let attempt = 0; attempt < 2; attempt++){
-      res = await post(key, proxy, p.model, body, timeoutMs);
-      countUse();
-      if (res.ok) break;
+      res = await post(key, proxy, p.model, body, timeoutMs, license);
+      if (res.ok) { countUse(); break; }
       const kind = classify(res.status, res.j), wait = retryDelay(res.j);
       if (attempt === 0 && ((kind === 'rate' && wait != null && wait <= 12) || kind === 'server')) { await sleep(((kind === 'rate' ? wait : 1.5) + 0.5) * 1000); continue; }
       break;
@@ -98,7 +99,10 @@ export async function ask({key = '', proxy = '', limit = 0, system, parts, fresh
       return {text, model:p.model, search:p.search, grounding, finish:c.finishReason || ''};
     }
     const kind = classify(res.status, res.j), message = (res.j && res.j.error && res.j.error.message) || `HTTP ${res.status}`;
-    last = new GeminiError(kind, message, {status:res.status, own:!!(res.j && res.j.error && res.j.error.macrolens), shared:!key, daily:/per.?day|PerDay|_day\b/i.test(JSON.stringify(res.j || {}))});
+    const own = !!(res.j && res.j.error && res.j.error.macrolens);
+    last = new GeminiError(kind, message, {status:res.status, own, shared:!key, daily:/per.?day|PerDay|_day\b/i.test(JSON.stringify(res.j || {}))});
+    // the Plus server's own refusals (license, daily limit, country) won't change with another model
+    if (own && kind !== 'model' && kind !== 'server') throw last;
     // try the next model, or the same one without Search (any Search refusal falls back rather than failing)
     if (kind === 'model' || kind === 'server' || (p.search && kind !== 'key' && kind !== 'region')) continue;
     throw last;
@@ -193,36 +197,52 @@ const MENU_NAME_SYSTEM = `List popular items on the current US menu of the resta
 ${MENU_SHAPE}`;
 
 /* ---------- tasks ---------- */
-export async function foodFromPhoto({key, proxy, limit, image, mime = 'image/jpeg', note = ''}){
+export async function foodFromPhoto({key, proxy, license, limit, image, mime = 'image/jpeg', note = ''}){
   const parts = [{inline_data:{mime_type:mime, data:image}}, {text:note ? `The person's note: ${note}` : 'No note from the person.'}];
-  const r = await ask({key, proxy, limit, system:PHOTO_SYSTEM, parts});
+  const r = await ask({key, proxy, license, limit, system:PHOTO_SYSTEM, parts});
   const j = parseJSON(r.text);
   if (!j) throw new GeminiError('bad', 'Gemini’s answer couldn’t be read.');
   return {...r, items:items(j), notes:str(j.notes, 200), cut:!!j.cut};
 }
-export async function foodFromText({key, proxy, limit, text}){
-  const r = await ask({key, proxy, limit, system:TEXT_SYSTEM, parts:[{text:`What I ate: ${text}`}]});
+export async function foodFromText({key, proxy, license, limit, text}){
+  const r = await ask({key, proxy, license, limit, system:TEXT_SYSTEM, parts:[{text:`What I ate: ${text}`}]});
   const j = parseJSON(r.text);
   if (!j) throw new GeminiError('bad', 'Gemini’s answer couldn’t be read.');
   return {...r, items:items(j), notes:str(j.notes, 200), cut:!!j.cut};
 }
-export async function menuFromPhoto({key, proxy, limit, image, mime = 'image/jpeg', restaurant = ''}){
+export async function menuFromPhoto({key, proxy, license, limit, image, mime = 'image/jpeg', restaurant = ''}){
   const parts = [{inline_data:{mime_type:mime, data:image}}, {text:restaurant ? `The restaurant is ${restaurant}.` : 'Read this menu.'}];
-  const r = await ask({key, proxy, limit, system:MENU_PHOTO_SYSTEM, parts, timeoutMs:90000});
+  const r = await ask({key, proxy, license, limit, system:MENU_PHOTO_SYSTEM, parts, timeoutMs:90000});
   const j = parseJSON(r.text);
   if (!j) throw new GeminiError('bad', 'Gemini’s answer couldn’t be read.');
   return {...r, restaurant:str(j.restaurant, 40), items:items(j), cut:!!j.cut};
 }
-export async function menuForName({key, proxy, limit, name}){
-  const r = await ask({key, proxy, limit, system:MENU_NAME_SYSTEM, parts:[{text:`Restaurant: ${name}`}], timeoutMs:90000});
+export async function menuForName({key, proxy, license, limit, name}){
+  const r = await ask({key, proxy, license, limit, system:MENU_NAME_SYSTEM, parts:[{text:`Restaurant: ${name}`}], timeoutMs:90000});
   const j = parseJSON(r.text);
   if (!j) throw new GeminiError('bad', 'Gemini’s answer couldn’t be read.');
   return {...r, restaurant:str(j.restaurant, 40) || name, items:items(j), cut:!!j.cut};
 }
 // Settings check: a tiny question that shows which model answers and whether Google Search is on
 export async function testKey(auth){
-  const {key = '', proxy = ''} = typeof auth === 'string' ? {key:auth} : auth;
-  const r = await ask({key, proxy, fresh:true, timeoutMs:30000, system:'Answer with only a JSON object like {"kcal":0}.', parts:[{text:'How many calories are in a McDonald\'s Big Mac in the US?'}]});
+  const {key = '', proxy = '', license = ''} = typeof auth === 'string' ? {key:auth} : auth;
+  const r = await ask({key, proxy, license, fresh:true, timeoutMs:30000, system:'Answer with only a JSON object like {"kcal":0}.', parts:[{text:'How many calories are in a McDonald\'s Big Mac in the US?'}]});
   const j = parseJSON(r.text);
   return {model:r.model, search:r.search, kcal:j && Number(j.kcal) > 0 ? Math.round(Number(j.kcal)) : null};
+}
+
+// Munchmark Plus: ask the Plus server whether this license key works. {plan, expires, daily}
+export async function checkPlus({proxy, license}){
+  if (!proxy) throw new GeminiError('plus', 'Munchmark Plus isn’t set up in this copy of the app.', {own:true});
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 20000);
+  let r, j = null;
+  try {
+    r = await fetch(`${rootOf(proxy)}/plus/check`, {method:'POST', headers:{'Content-Type':'application/json', 'X-Munchmark-License':String(license || '').trim()}, body:'{}', signal:ctl.signal});
+    try { j = await r.json(); } catch {}
+  } catch (e) {
+    throw new GeminiError('net', e && e.name === 'AbortError' ? 'The Plus server took too long to answer.' : 'Couldn’t reach the Plus server.', {shared:true});
+  } finally { clearTimeout(t); }
+  if (r.ok && j && j.ok) return {kind:j.kind || 'license', plan:j.plan || 'Munchmark Plus', expires:j.expires || null, daily:j.daily || 0};
+  const e = (j && j.error) || {};
+  throw new GeminiError(e.macrolens || classify(r.status, j), e.message || `HTTP ${r.status}`, {status:r.status, own:!!e.macrolens, shared:true});
 }

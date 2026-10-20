@@ -31,7 +31,7 @@ Munchmark is built on the open-source software and open data below. Each keeps i
 
 | Service | Use | Terms |
 | --- | --- | --- |
-| Google Gemini API | AI photo, menu and typed-food recognition, only after the person agrees | [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms) |
+| Google Gemini API | AI photo, menu and typed-food recognition on Munchmark Plus (or with the person’s own key), only after they agree | [Gemini API Additional Terms](https://ai.google.dev/gemini-api/terms) |
 
 ## Names and trademarks
 
