@@ -22,8 +22,8 @@
 // Before the first sale: turn billing on for the Google project, add a budget alert, and set FREE_TIER to no.
 // Plus promises the paid tier, where Google doesn't use requests to improve its products.
 
-const VERSION = 'v12.1';   // shown at the server's address, so you can tell which code Cloudflare is running
-const DEFAULT_ORIGINS = 'https://athanbriggs-ui.github.io, https://athanbriggs-hub.github.io';
+const VERSION = 'v12.2';   // shown at the server's address, so you can tell which code Cloudflare is running
+const DEFAULT_ORIGINS = 'https://munchmarkai.app, https://www.munchmarkai.app';
 const MODELS = new Set(['gemini-2.5-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-flash-lite-latest', 'gemini-flash-latest']);
 const MAX_BYTES = 8 * 1024 * 1024;
 const LS_VALIDATE = 'https://api.lemonsqueezy.com/v1/licenses/validate';

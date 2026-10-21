@@ -2,7 +2,7 @@
 
 // The Munchmark Plus server (the Cloudflare Worker in worker/gemini-proxy.js). Plus members' Gemini requests go
 // through it; free users never touch it. Leave it empty to turn Plus off (each person can still add their own key).
-export const GEMINI_PROXY = 'https://macro-lens-gemini.athanbriggs.workers.dev';
+export const GEMINI_PROXY = 'https://api.munchmarkai.app';
 
 // The Lemon Squeezy checkout link for Plus, like 'https://munchmark.lemonsqueezy.com/buy/…'.
 // While it's empty, the app says Plus is coming soon.
