@@ -13,6 +13,25 @@
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/app.css">
+<script>/* if the app doesn't start (a phone stuck on a mix of old and new files), offer to fetch a clean copy.
+   Only saved app files are cleared; the food log is kept in a separate store and isn't touched. */
+(function(){
+  function show(){
+    if (window.__mmBooted || document.getElementById('mm-fix')) return;
+    var b = document.createElement('button'); b.id = 'mm-fix'; b.type = 'button'; b.className = 'update-bar';
+    b.textContent = 'Munchmark didn’t load right. Tap to fix it (your log is kept).';
+    b.onclick = function(){ b.textContent = 'Fixing…';
+      var jobs = [];
+      if (window.caches) jobs.push(caches.keys().then(function(k){ return Promise.all(k.map(function(x){ return caches.delete(x); })); }));
+      if (navigator.serviceWorker) jobs.push(navigator.serviceWorker.getRegistrations().then(function(r){ return Promise.all(r.map(function(x){ return x.unregister(); })); }));
+      Promise.all(jobs).catch(function(){}).then(function(){ location.reload(); });
+    };
+    (document.body || document.documentElement).appendChild(b);
+  }
+  window.__mmFail = show;
+  window.addEventListener('error', function(){ setTimeout(show, 3000); });
+  window.addEventListener('load', function(){ setTimeout(show, 15000); });
+})();</script>
 </head>
 <body>
 <div class="app">

@@ -282,7 +282,7 @@ function renderToday(){
     return;
   }
   // a timeline in the order things were eaten: one stop per meal, and a new stop each time the meal changes
-  const sorted = entries.map((e, i) => ({e, i})).sort((x, y) => (x.e.time || 0) - (y.e.time || 0) || x.i - y.i).map(x => x.e);
+  const sorted = entries.map((e, i) => ({e, i})).sort((x, y) => (Date.parse(x.e.time) || 0) - (Date.parse(y.e.time) || 0) || x.i - y.i).map(x => x.e);
   const stops = [];
   for (const e of sorted) { const mk = e.meal || 'snack', last = stops[stops.length - 1]; if (last && last.meal === mk) last.list.push(e); else stops.push({meal:mk, list:[e]}); }
   $('#meals').innerHTML = `<ol class="tl">${stops.map(st => {
@@ -3416,6 +3416,7 @@ async function boot(){
   fillBodyForm();
   setTab(['scan','body','week','pantry','meals','containers','eatout','sports'].includes(h) ? h : 'today');
   if ('serviceWorker' in navigator && location.protocol === 'https:') watchForUpdates();
+  window.__mmBooted = true;
 }
-boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Munchmark couldn’t load its food data. Reload the page.</p>'; });
+boot().catch(err => { console.error(err); window.__mmFail?.(); });
 window.__ml = {drinkOz, fillBodyForm, renderBody, pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
