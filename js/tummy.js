@@ -43,11 +43,18 @@ function edges(){
     const c = document.createElement('canvas'); c.width = 200; c.height = 200;
     const x = c.getContext('2d'); x.fill(new Path2D(SHAPE));
     const d = x.getImageData(0, 0, 200, 200).data;
-    for (let y = 0; y < 200; y++) { let l = -1, r = -1; for (let i = 58; i < 200; i++) if (d[(y * 200 + i) * 4 + 3] > 127) { if (l < 0) l = i; r = i; } EDGES.push(l < 0 ? null : [l, r]); }
+    // a row can cross the outline twice (the food pipe sits beside the top of the bag), so keep only its widest
+    // unbroken stretch: a label must never straddle the black line
+    for (let y = 0; y < 200; y++) {
+      let best = null, l = -1;
+      for (let i = 58; i <= 200; i++) { const on = i < 200 && d[(y * 200 + i) * 4 + 3] > 127;
+        if (on && l < 0) l = i; else if (!on && l >= 0) { if (!best || i - 1 - l > best[1] - best[0]) best = [l, i - 1]; l = -1; } }
+      EDGES.push(best);
+    }
   } catch { EDGES = []; }
   return EDGES;
 }
-const edgeAt = y => edges()[Math.round(y)] || [70, 176];
+const edgeAt = y => edges()[Math.round(y)] || [120, 120];   // no room on rows outside the shape
 
 let uidN = 0;
 export function stomachHTML(){
