@@ -3379,6 +3379,27 @@ const syncOnline = () => { $('#offline-pill').hidden = navigator.onLine; };
 window.addEventListener('online', syncOnline); window.addEventListener('offline', syncOnline);
 
 /* ---------- boot ---------- */
+// An installed app is often resumed rather than restarted, so it never re-checks for a new version on its own.
+// Check whenever it comes back to the screen (and every half hour); when a new version takes over, reload right
+// away if the app was only just opened, otherwise offer a one-tap reload so nothing half-typed is lost.
+const OPENED = Date.now();
+function watchForUpdates(){
+  const sw = navigator.serviceWorker, hadOne = !!sw.controller;
+  sw.register('sw.js').then(reg => {
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+    setInterval(check, 30 * 60 * 1000);
+  }).catch(() => {});
+  let done = false;
+  sw.addEventListener('controllerchange', () => {
+    if (!hadOne || done) return; done = true;
+    if (Date.now() - OPENED < 8000) { location.reload(); return; }
+    const bar = document.createElement('button');
+    bar.type = 'button'; bar.className = 'update-bar'; bar.textContent = 'Munchmark was updated. Tap to load it.';
+    bar.addEventListener('click', () => location.reload());
+    document.body.append(bar);
+  });
+}
 async function boot(){
   syncOnline();
   const [db] = await Promise.all([fetch('data/foods.json').then(r => r.json()), loadAll()]);
@@ -3394,7 +3415,7 @@ async function boot(){
   $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
   fillBodyForm();
   setTab(['scan','body','week','pantry','meals','containers','eatout','sports'].includes(h) ? h : 'today');
-  if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol === 'https:') watchForUpdates();
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Munchmark couldn’t load its food data. Reload the page.</p>'; });
 window.__ml = {drinkOz, fillBodyForm, renderBody, pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};

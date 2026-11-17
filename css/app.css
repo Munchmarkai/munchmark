@@ -984,3 +984,4 @@ button.daynav-label b span{font-size:inherit;color:inherit}
 .fr-freezer{background:var(--fr-case);height:64px;padding-top:10px}
 .fr-freezer i{background:var(--fr-handle);height:9px;width:76%}
 .fr-door{display:none}
+.update-bar{position:fixed;left:50%;transform:translateX(-50%);top:calc(10px + env(safe-area-inset-top,0px));z-index:40;max-width:calc(100% - 32px);padding:10px 16px;border:2px solid var(--stroke);border-radius:var(--wob-sm);background:var(--yellow);color:var(--pop-ink);font-weight:700;font-size:14px;box-shadow:2px 3px 0 var(--stroke)}
