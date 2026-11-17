@@ -955,3 +955,32 @@ button.daynav-label b span{font-size:inherit;color:inherit}
 .fr-arrow{width:32px;height:32px}
 .tub-body b{overflow-wrap:normal;word-break:normal;hyphens:auto}
 .tub-body b{overflow-wrap:break-word;font-size:12px}
+/* fridge, take four: no side doors. Colors come from fridge tokens so each theme can have its own fridge.
+   Light (test, from a second photo): white matte body, bright interior, copper handle. Dark: stainless, dark lit interior. */
+:root{
+  --fr-case:linear-gradient(100deg,#FFFFFF 0%,#F3F2EE 50%,#FBFAF7 100%);
+  --fr-in:linear-gradient(#F7F8F7,#DDE1E1); --fr-glow:rgba(255,255,255,.9); --fr-text:#16201A; --fr-muted:#55625A;
+  --fr-glass:rgba(255,255,255,.55); --fr-glass-top:rgba(120,135,140,.55); --fr-glass-edge:#9AA4A8;
+  --fr-bin:rgba(255,255,255,.45); --fr-bin-edge:#A9B3B7; --fr-lamp:#2B3438; --fr-handle:linear-gradient(#E9B898,#C98E6B 55%,#B57A58);
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --fr-case:linear-gradient(100deg,#D9DEE1 0%,#B7BEC2 35%,#E4E8EA 55%,#A9B1B5 100%);
+  --fr-in:radial-gradient(120% 55% at 50% 0%,rgba(255,236,170,.30),rgba(255,236,170,0) 70%),linear-gradient(#1F2A2F,#141B1F); --fr-glow:rgba(255,226,140,.65); --fr-text:#F2F5F0; --fr-muted:#B8C4BE;
+  --fr-glass:rgba(190,225,240,.28); --fr-glass-top:rgba(220,240,250,.75); --fr-glass-edge:#0B1114;
+  --fr-bin:rgba(200,232,245,.12); --fr-bin-edge:rgba(220,240,250,.75); --fr-lamp:#2B3438; --fr-handle:linear-gradient(#F2F4F5,#C9CFD2);
+}}
+:root[data-theme="dark"]{
+  --fr-case:linear-gradient(100deg,#D9DEE1 0%,#B7BEC2 35%,#E4E8EA 55%,#A9B1B5 100%);
+  --fr-in:radial-gradient(120% 55% at 50% 0%,rgba(255,236,170,.30),rgba(255,236,170,0) 70%),linear-gradient(#1F2A2F,#141B1F); --fr-glow:rgba(255,226,140,.65); --fr-text:#F2F5F0; --fr-muted:#B8C4BE;
+  --fr-glass:rgba(190,225,240,.28); --fr-glass-top:rgba(220,240,250,.75); --fr-glass-edge:#0B1114;
+  --fr-bin:rgba(200,232,245,.12); --fr-bin-edge:rgba(220,240,250,.75); --fr-lamp:#2B3438; --fr-handle:linear-gradient(#F2F4F5,#C9CFD2);
+}
+.fridge{display:block;background:var(--fr-case);padding:12px 10px 8px}
+.fr-in{background:var(--fr-in);color:var(--fr-text)}
+.fr-bulb{background:var(--fr-lamp);box-shadow:0 6px 16px var(--fr-glow)}
+.fr-shelf::after{background:var(--fr-glass);border-top-color:var(--fr-glass-top);border-bottom-color:var(--fr-glass-edge)}
+.fr-empty{color:var(--fr-muted)}
+.fr-drawer{background:var(--fr-bin);border-color:var(--fr-bin-edge);border-top-color:var(--fr-glass-edge)}
+.fr-freezer{background:var(--fr-case);height:64px;padding-top:10px}
+.fr-freezer i{background:var(--fr-handle);height:9px;width:76%}
+.fr-door{display:none}

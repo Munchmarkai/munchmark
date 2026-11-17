@@ -1579,16 +1579,6 @@ function cookWarn(raw, cooked){
   return '';
 }
 const newRecipe = () => ({name:'', items:[], water:[], text:'', cookedIn:'', cookedUnit:'g', potId:'', servings:'', msg:null, ocr:null});
-// an open French door: dark lining with clear bins of drinks and jars, drawn only for looks
-function frDoor(side){
-  const INK = 'stroke="#16201A" stroke-width="2" stroke-linejoin="round"';
-  const bottle = (x, h, col, cap) => `<path ${INK} fill="var(--${col})" d="M${x} ${26 - h}h6v3l2 3v${h - 6}h-10v${h - 6}l2-3z"/><rect ${INK} fill="var(--${cap})" x="${x}" y="${23 - h}" width="6" height="3"/>`;
-  const jar = (x, col) => `<rect ${INK} fill="var(--${col})" x="${x}" y="14" width="10" height="12" rx="2"/><rect ${INK} fill="var(--paper)" x="${x - 1}" y="11" width="12" height="4" rx="1"/>`;
-  const bins = side === 'l'
-    ? [jar(4, 'red') + jar(17, 'yellow'), bottle(5, 20, 'blue', 'paper') + bottle(17, 16, 'orange', 'red'), bottle(4, 22, 'paper', 'blue') + bottle(16, 22, 'paper', 'blue'), jar(10, 'green')]
-    : [jar(4, 'orange') + jar(17, 'purple'), bottle(10, 18, 'yellow', 'green'), bottle(4, 22, 'green', 'paper') + bottle(16, 22, 'green', 'paper'), jar(4, 'yellow') + bottle(17, 16, 'red', 'paper')];
-  return `<div class="fr-door ${side}" aria-hidden="true">${bins.map(b => `<span class="fr-bin"><svg viewBox="0 0 32 28">${b}</svg></span>`).join('')}<i class="fr-handle-bar"></i></div>`;
-}
 function renderMeals(){
   const el = $('#meals-body'); if (!el) return;
   $$('#view-meals .seg [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === S.tab)));
@@ -1610,7 +1600,7 @@ function renderMeals(){
   const shelf = (label, list, empty) => `<div class="fr-shelf"><span class="fr-tag">${label}</span><div class="fr-row">${list.length ? list.map(tub).join('') : `<span class="fr-empty">${empty}</span>`}</div></div>`;
   const sel = all.find(r => r.id === S.ml.sel);
   el.innerHTML = `<div class="sec-head"><h2 class="h">Meals you cook</h2><button type="button" class="btn primary sm" data-action="r-new">+ New meal</button></div>
-    ${all.length ? `<div class="fridge">${frDoor('l')}<div class="fr-in"><i class="fr-bulb" aria-hidden="true"></i>
+    ${all.length ? `<div class="fridge"><div class="fr-in"><i class="fr-bulb" aria-hidden="true"></i>
         ${shelf('Pinned', pinned, 'Pin a meal and it stays up here, however rarely you make it.')}
         ${shelf('Most used', used, 'Log a portion of a meal and it lands here.')}
         ${shelf('Made lately', recent, 'Nothing else yet.')}
@@ -1619,7 +1609,7 @@ function renderMeals(){
             <span class="fr-handle"><b>${label}</b>${list.length ? `<small class="tnum">${pg + 1} of ${pages}</small>` : ''}</span>
             <button type="button" class="fr-arrow" data-action="fr-page" data-d="${d}" data-step="1" aria-label="Next in ${label}" ${pg >= pages - 1 ? 'disabled' : ''}>${CHEV_R}</button></div>
             <div class="fr-row">${list.length ? list.slice(pg * 3, pg * 3 + 3).map(tub).join('') : '<span class="fr-empty">Empty. Meals that aren’t on a shelf go in here.</span>'}</div></div>`; }).join('')}
-      </div>${frDoor('r')}<div class="fr-freezer" aria-hidden="true"><i></i></div></div>
+      </div><div class="fr-freezer" aria-hidden="true"><i></i></div></div>
       ${sel ? (() => { const t = recipeTotals(sel), g = recipeCooked(sel);
         return `<div class="fr-pick"><b>${esc(sel.name)}</b><small>${sel.items.length} ingredient${sel.items.length === 1 ? '' : 's'} · batch ${int(g)} g · ${int(t.calories)} kcal${sel.servings ? ` · ${sel.servings} servings` : ''}${sel.uses ? ` · logged ${sel.uses}×` : ''}</small><small class="tnum">${esc(perLine(t, g))}</small>
           <div class="fr-acts"><button type="button" class="btn primary sm" data-action="r-log" data-id="${esc(sel.id)}">Log a portion</button><button type="button" class="btn ghost sm" data-action="r-edit" data-id="${esc(sel.id)}">Edit</button><button type="button" class="btn ghost sm" data-action="r-pin" data-id="${esc(sel.id)}" aria-pressed="${!!sel.pin}">${sel.pin ? '★ Pinned' : '☆ Pin'}</button></div></div>`; })()
