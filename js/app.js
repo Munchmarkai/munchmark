@@ -1267,6 +1267,31 @@ function waterTarget(date){
   return waterGoal({weightLb: num(S.profile.weightLb) || num(day?.weights?.morning), sex: S.profile.sex, practiceMin: num(day?.practice?.minutes), sweatLossLb: sweatOf(day)});
 }
 const containers = kind => S.containers.filter(c => !kind || c.kind === kind);
+// Drinks logged as food also count toward water. A drink is something named like one that is mostly water, or
+// (when the label gives no water content) named like one or measured in ml / fl oz. Alcohol doesn't count:
+// it makes you lose more than it adds. Powders, syrups, canned-in-juice fruit and the like are left out.
+const DRINK_RE = /\b(water|juice|soda|cola|coke|pepsi|sprite|fanta|dr\.? ?pepper|mountain dew|root beer|ginger ale|lemonade|limeade|tea|coffee|latte|cappuccino|americano|espresso|macchiato|mocha|frappuccino|cold brew|milk|soymilk|oatmilk|smoothie|shake|gatorade|powerade|bodyarmor|celsius|red bull|monster|energy drink|sports drink|drinks?|beverages?|kombucha|seltzer|sparkling|punch|kefir|electrolyte)\b/i;
+const ALCOHOL_RE = /\b(beer|wine|vodka|whiske?y|rum|tequila|liquor|alcoholic|gin|sake|champagne|cocktail|margarita|hard (seltzer|cider)|lager|ale|ipa)\b/i;
+const NOT_DRINK_WET = /\b(soup|stew|chili|sauce|yogurt|pudding|cooked|in water|with water|water[- ]packed|juice pack|in (its )?(own )?juice|packed|drained|solids|(lemon|lime) juice)\b/i;
+const NOT_DRINK_DRY = /\b(powder|mix|concentrate|syrup|creamer|bars?|cake|cookies?|candy|ice cream|cheese|butter|yogurt|cereal|chips|bread|milk chocolate|tea bags?|grounds?|beans|k-cups?|pods?|gum|jerky)\b/i;
+function drinkOz(it, mult = 1){
+  const text = `${it.name || ''} ${it.sub || ''}`, g = num(it.grams) * mult;
+  // root beer and ginger ale are sodas, not alcohol, even though the words 'beer' and 'ale' are in them
+  if (!g || ALCOHOL_RE.test(text.replace(/\b(root beer|ginger ale|ginger beer)\b/gi, ''))) return 0;
+  const waterPct = num(it.p?.[KI.water_g]);
+  let is;
+  if (waterPct > 0) is = waterPct >= 80 && (DRINK_RE.test(text) || /^beverages,/i.test(it.sub || '')) && !NOT_DRINK_WET.test(text);
+  else is = (DRINK_RE.test(text) || /\d\s*(ml|cl|l|fl\.? ?oz)\b/i.test(it.portion || '')) && !NOT_DRINK_DRY.test(text) && !NOT_DRINK_WET.test(text);
+  const oz = Math.round(g / OZ_ML * 2) / 2;
+  return is && oz >= 2 ? oz : 0;
+}
+// add one water entry per drink in a freshly logged meal; they stay tied to it so deleting or resizing the meal follows through
+function addDrinkWater(day, entry){
+  let total = 0;
+  for (const it of entry.items || []) { const oz = drinkOz(it, num(entry.mult) || 1); if (!oz) continue;
+    (day.water ||= []).push({t:entry.time, oz, src:it.name, entry:entry.id, baseOz:drinkOz(it, 1)}); total += oz; }
+  return total;
+}
 function addWater(oz, opts = {}){
   const date = opts.date || S.viewDate;
   oz = Math.round(oz * 10) / 10;
@@ -2962,17 +2987,18 @@ document.addEventListener('click', e => {
     case 'cal-day': S.viewDate = b.dataset.date; S.open = null; S.wSel = null; if (history.state?.macro) history.back(); else setTab('today'); break;
     case 'day-pick': S.viewDate = b.dataset.date; S.open = null; renderToday(); break;
     case 'entry-toggle': S.open = S.open === b.dataset.id ? null : b.dataset.id; S.confirmDel = null; renderToday(); break;
-    case 'entry-mult': { const en = S.days[S.viewDate]?.entries.find(x => x.id === b.dataset.id); if (en) { en.mult = Number(b.dataset.m); saveDay(S.viewDate); renderToday(); } break; }
+    case 'entry-mult': { const en = S.days[S.viewDate]?.entries.find(x => x.id === b.dataset.id); if (en) { en.mult = Number(b.dataset.m); (S.days[S.viewDate].water || []).forEach(w => { if (w.entry === en.id && w.baseOz) w.oz = Math.round(w.baseOz * en.mult * 2) / 2; }); saveDay(S.viewDate); renderToday(); } break; }
     case 'entry-again': {
       const en = S.days[S.viewDate]?.entries.find(x => x.id === b.dataset.id); if (!en) break;
       const d = dayKey(), day = S.days[d] || {date:d, entries:[]};
-      day.entries = day.entries.concat([{...JSON.parse(JSON.stringify(en)), id:uid(), time:new Date().toISOString(), meal:defaultMeal()}]);
+      const again = {...JSON.parse(JSON.stringify(en)), id:uid(), time:new Date().toISOString(), meal:defaultMeal()};
+      day.entries = day.entries.concat([again]); addDrinkWater(day, again);
       S.days[d] = day; saveDay(d); S.viewDate = d; S.open = null; renderToday(); toast(`Logged ${en.name} again today`); break; }
     case 'entry-del': {
       const id = b.dataset.id;
       if (S.confirmDel !== id) { S.confirmDel = id; renderToday(); setTimeout(() => { if (S.confirmDel === id) { S.confirmDel = null; renderToday(); } }, 4000); break; }
       const day = S.days[S.viewDate]; if (!day) break;
-      day.entries = day.entries.filter(x => x.id !== id); S.confirmDel = null; S.open = null; saveDay(S.viewDate); renderToday(); toast('Entry deleted'); break; }
+      day.entries = day.entries.filter(x => x.id !== id); if (day.water) day.water = day.water.filter(w => w.entry !== id); S.wSel = null; S.confirmDel = null; S.open = null; saveDay(S.viewDate); renderToday(); toast('Entry deleted'); break; }
     case 'mode': S.mode = b.dataset.mode; renderScan(); if (S.mode === 'type') setTimeout(() => $('#search-in').focus(), 50); break;
     case 'take-photo': $('#in-cam').click(); break;
     case 'pick-photo': $('#in-gal').click(); break;
@@ -3011,10 +3037,12 @@ document.addEventListener('click', e => {
       const items = S.plate.map(it => ({name:it.name, sub:it.sub, portion:`${dec(num(it.qty))} × ${it.opts[it.opt].t}`.replace(/^1 × /, '').replace(/ × grams$/, ' g'), grams:Math.round(itemGrams(it) * 10) / 10, p:it.p, src:it.src, ndb:it.ndb, code:it.code}));
       const name = ($('#plate-name').value.trim() || defaultPlateName()).slice(0, 60);
       const entry = {id:uid(), meal:S.meal, time:new Date().toISOString(), name, thumb:S.photo ? S.photo.thumb : '', items, mult:1};
-      day.entries = (day.entries || []).concat([entry]); S.days[date] = day; saveDay(date); store.persist();
+      day.entries = (day.entries || []).concat([entry]); S.days[date] = day;
+      const drank = addDrinkWater(day, entry); S.wSel = null;
+      saveDay(date); store.persist();
       const kcal = entryTotals(entry).calories;
       S.plate = []; S.plateName = ''; if (S.photo) URL.revokeObjectURL(S.photo.url); S.photo = null; S.rec.results = null; S.rec.added = new Set(); S.meal = defaultMeal();
-      toast(`Added ${name} · ${int(kcal)} kcal`); setTab('today'); break; }
+      toast(`Added ${name} · ${int(kcal)} kcal${drank ? ` · ${dec(drank)} oz added to your water` : ''}`); setTab('today'); break; }
     case 'sex': if (S.draft.sex !== b.dataset.sex) { S.bf.level = null; S.bf.probs = null; } S.draft.sex = b.dataset.sex; S.dirty = true; syncSex(); renderBody(); break;
     case 'body-save': saveStats(); toast('Stats saved'); break;
     case 'export': exportBackup(); break;
@@ -3336,4 +3364,4 @@ async function boot(){
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Munchmark couldn’t load its food data. Reload the page.</p>'; });
-window.__ml = {pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
+window.__ml = {drinkOz, pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
