@@ -51,6 +51,9 @@ const NUTRIENTS = [
   {k:'folate_mcg', label:'Folate', unit:'mcg', dv:400},
 ];
 const NMAP = Object.fromEntries(NUTRIENTS.map(n => [n.k, n]));
+// each nutrient keeps one bright color for its bar and its page
+const NCOLORS = ['green','orange','purple','yellow','red','blue'];
+NUTRIENTS.forEach((n, i) => { n.color = NCOLORS[i % NCOLORS.length]; });
 const KEYN = ['fiber_g','sodium_mg','potassium_mg','sugar_g'];
 const MEALS = [['breakfast','Breakfast'],['lunch','Lunch'],['dinner','Dinner'],['snack','Snack']];
 const MEAL_LABEL = Object.fromEntries(MEALS);
@@ -260,15 +263,16 @@ function renderToday(){
   $('#week').innerHTML = keys.map((k, i) => `<button type="button" class="wd" data-action="day-pick" data-date="${k}" aria-current="${k === date}" aria-label="${esc(longDay(k))}: ${int(vals[i])} kcal">
       <span class="wd-col"><i class="${vals[i] > g.calories ? 'over' : ''}" style="height:${vals[i] / top * 100}%"></i><span class="wd-goal" style="bottom:${g.calories / top * 100}%"></span></span>
       <span>${toDate(k).toLocaleDateString(undefined, {weekday:'narrow'})}</span></button>`).join('');
+  const chev = '<svg class="kn-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>';
   $('#keyn').innerHTML = KEYN.map(k => {
     const n = NMAP[k], v = t[k], pct = n.dv ? v / n.dv * 100 : 0;
-    return `<div class="kn ${n.limit ? `limit${pct > 100 ? ' hot' : ''}` : ''}"><div class="kn-top"><b>${n.label}</b><span class="tnum">${n.dv ? Math.round(pct) + '%' : 'no daily value'}</span></div>
-      <div class="kn-val tnum">${n.unit === 'mg' ? int(v) : dec(v)}<small>${n.unit}${n.dv ? ' of ' + int(n.dv) + (n.limit ? ' max' : '') : ''}</small></div>
-      ${n.dv ? `<div class="bar"><i style="width:${Math.min(100, pct)}%"></i></div>` : ''}</div>`;
+    return `<button type="button" class="kn ${n.limit && pct > 100 ? 'hot' : ''}" style="--c:var(--${n.color})" data-action="macro" data-macro="${k}"><span class="kn-top"><b><i class="mdot"></i>${n.label}</b><span class="tnum">${n.dv ? Math.round(pct) + '%' : ''}${chev}</span></span>
+      <span class="kn-val tnum">${n.unit === 'mg' ? int(v) : dec(v)}<small>${n.unit}${n.dv ? ' of ' + int(n.dv) + (n.limit ? ' max' : '') : ''}</small></span>
+      ${n.dv ? `<span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span>` : '<span class="kn-nodv">no daily value</span>'}</button>`;
   }).join('');
   $('#nlist').innerHTML = NUTRIENTS.filter(n => !KEYN.includes(n.k)).map(n => {
     const v = t[n.k], pct = n.dv ? v / n.dv * 100 : 0;
-    return `<li class="nrow ${n.limit ? 'limit' + (pct > 100 ? ' hot' : '') : ''}"><span>${n.label}${n.limit ? ' <em>(limit)</em>' : ''}</span><span class="tnum">${n.unit === 'mg' ? int(v) : dec(v)} ${n.unit} <em>· ${Math.round(pct)}%</em></span><div class="bar"><i style="width:${Math.min(100, pct)}%"></i></div></li>`;
+    return `<li><button type="button" class="nrow ${n.limit && pct > 100 ? 'hot' : ''}" style="--c:var(--${n.color})" data-action="macro" data-macro="${n.k}"><span>${n.label}${n.limit ? ' <em>(limit)</em>' : ''}</span><span class="tnum">${n.unit === 'mg' ? int(v) : dec(v)} ${n.unit} <em>· ${Math.round(pct)}%</em>${chev}</span><span class="bar"><i style="width:${Math.min(100, pct)}%"></i></span></button></li>`;
   }).join('');
   const entries = S.days[date]?.entries || [];
   if (!entries.length) {
@@ -284,7 +288,7 @@ function renderToday(){
 }
 /* ---------- render: what filled a color ---------- */
 function renderMacro(){
-  const m = MACRO_BY[S.macro] || MACRO_BY.protein, date = S.viewDate, ki = KI[m.k];
+  const nut = NMAP[S.macro] || null, m = nut || MACRO_BY[S.macro] || MACRO_BY.protein, date = S.viewDate, ki = KI[m.k];
   const rows = [];
   for (const e of S.days[date]?.entries || []) {
     const mult = num(e.mult) || 1, items = e.items || [];
@@ -294,7 +298,7 @@ function renderMacro(){
         sub: [MEAL_LABEL[e.meal || 'snack'], items.length > 1 ? e.name : '', int(grams) + ' g'].filter(Boolean).join(' · ')});
     }
   }
-  $('#view-macro').innerHTML = macroPageHTML({macro:m.id, t:dayTotals(date), g:targets(), rows, dayLabel:relDay(date)});
+  $('#view-macro').innerHTML = macroPageHTML({macro:m.id, nutrient:nut, t:dayTotals(date), g:targets(), rows, dayLabel:relDay(date)});
 }
 function entryHTML(e){
   const m = num(e.mult) || 1, t = entryTotals(e), open = S.open === e.id;

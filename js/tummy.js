@@ -134,32 +134,41 @@ export function updateStomach(svg, t, goal){
 }
 function o_fix(out, i, gap, hi){ const max = i === out.length - 1 ? hi : out[i + 1].y - gap; if (out[i].y > max) out[i].y = max; }
 
-// The page behind a color. rows: [{entryId, name, sub, grams}] for the chosen macro, any order.
-export function macroPageHTML({macro, t, g, rows, dayLabel}){
-  const m = MACRO_BY[macro] || MACROS[0];
-  const total = num(t[m.k]), kcal = total * m.kcal, cal = num(t.calories);
-  const share = cal ? Math.round(Math.min(1, kcal / cal) * 100) : 0;
-  const goalTxt = m.id === 'protein' ? `${int(num(g.protein_lo))}–${int(num(g.protein_hi))} g` : `${int(num(g[m.k]))} g`;
-  const list = rows.filter(r => r.grams >= 0.5).sort((a, b) => b.grams - a.grams);
-  const none = rows.length - list.length, top = list[0]?.grams || 1;
+// The page behind a color, or behind any nutrient. rows: [{entryId, name, sub, grams}] in the nutrient's own unit, any order.
+// For a macro pass macro:'protein' and g (the targets). For anything else pass nutrient:{k, label, unit, dv, limit, color}.
+export function macroPageHTML({macro, nutrient, t, g, rows, dayLabel}){
+  const m = nutrient ? null : MACRO_BY[macro] || MACROS[0], n = nutrient || {k:m.k, label:m.label, unit:'g'};
+  const total = num(t[n.k]), small = m || n.unit === 'mg' ? 0.5 : 0.05;
   const fmt = v => v >= 10 ? int(v) : (Math.round(v * 10) / 10).toString();
-  return `<div class="mp m-${m.id}">
+  let goalTxt, note;
+  if (m) {
+    const kcal = total * m.kcal, cal = num(t.calories), share = cal ? Math.round(Math.min(1, kcal / cal) * 100) : 0;
+    goalTxt = 'of ' + (m.id === 'protein' ? `${int(num(g.protein_lo))}–${int(num(g.protein_hi))} g` : `${int(num(g[m.k]))} g`);
+    note = `${total ? `That’s ${int(kcal)} kcal, ${share}% of what you ate. ` : ''}Every gram of ${m.label.toLowerCase()} is ${m.kcal} kcal.`;
+  } else if (n.dv) {
+    const pct = Math.round(total / n.dv * 100);
+    goalTxt = `of ${fmt(n.dv)} ${n.unit}${n.limit ? ' max' : ''}`;
+    note = n.limit ? (pct > 100 ? `That’s ${pct - 100}% over the daily limit.` : `That’s ${pct}% of the daily limit. Staying under is the goal.`) : `That’s ${pct}% of the daily value.`;
+  } else { goalTxt = ''; note = 'There’s no daily value for this one.'; }
+  const list = rows.filter(r => r.grams >= small).sort((a, b) => b.grams - a.grams);
+  const none = rows.length - list.length, top = list[0]?.grams || 1;
+  return `<div class="mp ${m ? 'm-' + m.id : ''}"${m ? '' : ` style="--c:var(--${esc(n.color || 'green')})"`}>
     <div class="mp-hero">
       <button type="button" class="mp-back" data-action="macro-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 5-7 7 7 7"/></svg>Back</button>
       <p class="mp-day">${esc(dayLabel)}</p>
-      <h1 class="mp-title">${m.label}</h1>
-      <p class="mp-big tnum"><b>${int(total)}</b><span>g of ${goalTxt}</span></p>
-      <p class="mp-note tnum">${total ? `That’s ${int(kcal)} kcal, ${share}% of what you ate. ` : ''}Every gram of ${m.label.toLowerCase()} is ${m.kcal} kcal.</p>
+      <h1 class="mp-title">${esc(n.label)}</h1>
+      <p class="mp-big tnum"><b>${m ? int(total) : fmt(total)}</b><span>${esc(n.unit)} ${goalTxt}</span></p>
+      <p class="mp-note tnum">${note}</p>
     </div>
-    <div class="mp-tabs" role="group" aria-label="Macro">${MACROS.map(x => `<button type="button" class="mp-tab m-${x.id}" data-action="macro" data-macro="${x.id}" aria-pressed="${x.id === m.id}"><i class="mdot"></i>${x.label}</button>`).join('')}</div>
+    ${m ? `<div class="mp-tabs" role="group" aria-label="Macro">${MACROS.map(x => `<button type="button" class="mp-tab m-${x.id}" data-action="macro" data-macro="${x.id}" aria-pressed="${x.id === m.id}"><i class="mdot"></i>${x.label}</button>`).join('')}</div>` : ''}
     <div class="sec">
       <h2 class="h">What added to it</h2>
       ${list.length ? `<ul class="mp-list">${list.map(r => `<li><button type="button" class="mp-row" data-action="macro-entry" data-id="${esc(r.entryId)}">
           <span class="mp-name"><b>${esc(r.name)}</b><small>${esc(r.sub || '')}</small></span>
-          <span class="mp-amt tnum"><b>+${fmt(r.grams)} g</b><small>${Math.round(r.grams / (total || 1) * 100)}%</small></span>
+          <span class="mp-amt tnum"><b>+${fmt(r.grams)} ${esc(n.unit)}</b><small>${Math.round(r.grams / (total || 1) * 100)}%</small></span>
           <span class="mp-bar"><i style="width:${Math.max(3, r.grams / top * 100)}%"></i></span>
-        </button></li>`).join('')}</ul>` : `<div class="empty"><b>No ${m.label.toLowerCase()} yet</b><p>${rows.length ? `Nothing logged ${esc(dayLabel.toLowerCase())} had any.` : 'Log a meal and it shows up here, food by food.'}</p><button type="button" class="btn primary" data-action="tab" data-tab="scan">Add food</button></div>`}
-      ${list.length && none ? `<p class="fine">${none} other food${none === 1 ? '' : 's'} added less than half a gram.</p>` : ''}
+        </button></li>`).join('')}</ul>` : `<div class="empty"><b>No ${esc(n.label.toLowerCase())} yet</b><p>${rows.length ? `Nothing logged ${esc(dayLabel.toLowerCase())} had any.` : 'Log a meal and it shows up here, food by food.'}</p><button type="button" class="btn primary" data-action="tab" data-tab="scan">Add food</button></div>`}
+      ${list.length && none ? `<p class="fine">${none} other food${none === 1 ? '' : 's'} added next to none.</p>` : ''}
     </div>
   </div>`;
 }
