@@ -269,7 +269,18 @@
   </section>
 
   <!-- BODY -->
-  <section class="view" id="view-body" aria-label="Body stats" hidden>
+  <section class="view" id="view-body" aria-label="Profile" hidden>
+    <div class="daynav">
+      <button type="button" class="iconbtn" data-action="bpage-prev" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+      <div class="daynav-label"><b id="bpage-title">Stats</b><span id="bpage-sub"></span></div>
+      <button type="button" class="iconbtn" data-action="bpage-next" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+    </div>
+    <div class="pager" role="group" aria-label="Profile pages">
+      <button type="button" data-action="bpage" data-bpage="stats">Stats</button>
+      <button type="button" data-action="bpage" data-bpage="body">Body</button>
+      <button type="button" data-action="bpage" data-bpage="settings">Settings</button>
+    </div>
+    <div class="view" data-bpg="stats">
     <div class="sec">
       <h2 class="h">Your stats</h2>
       <div class="field">
@@ -326,6 +337,9 @@
       <button type="button" class="btn primary" id="b-save" data-action="body-save">Save stats</button>
     </div>
     <div id="body-stats" class="view"></div>
+    </div>
+    <div class="view" data-bpg="body" hidden>
+    <div id="body-hero"></div>
     <div class="sec">
       <h2 class="h">Body fat photo check</h2>
       <div class="frame tall" id="bfframe">
@@ -362,6 +376,8 @@
         </div>
       </div>
     </div>
+    </div>
+    <div class="view" data-bpg="settings" hidden>
     <div class="sec">
       <h2 class="h">Settings</h2>
       <div class="field" id="ai-field"><span class="lbl">Food recognition <span class="hint">photos, menus and foods the app can’t find</span></span>
@@ -404,6 +420,7 @@
       <p class="fine" id="rec-about"></p>
       <p class="fine">Nutrition data: USDA National Nutrient Database for Standard Reference, Release 28, and USDA FoodData Central (public domain). Product data © <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> contributors, under the <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">Open Database License</a>; product photos under CC BY-SA 3.0. Food and container recognizer: OpenAI CLIP (MIT), run on your phone with Transformers.js (Apache 2.0) and ONNX Runtime (MIT). Label, list and scale reading: Tesseract OCR (Apache 2.0). Photo, menu and text recognition on Munchmark Plus: Google Gemini API. Fonts: Archivo and Figtree (SIL Open Font License). Full license texts: <a href="notices.html" target="_blank" rel="noopener">third-party notices</a>.</p>
       <p class="fine">Restaurant and brand names identify foods only; Munchmark isn't affiliated with or endorsed by any of them. Estimates are for tracking, not medical advice. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="terms.html" target="_blank" rel="noopener">Terms</a></p>
+    </div>
     </div>
   </section>
 </div>

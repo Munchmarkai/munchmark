@@ -74,7 +74,7 @@ function defaultMeal(){ const h = new Date().getHours(); return h < 11 ? 'breakf
 
 /* ---------- state ---------- */
 const S = {
-  tab:'today', macro:'protein', page:'food', cal:{month:null}, viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
+  tab:'today', macro:'protein', page:'food', bpage:'stats', cal:{month:null}, viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
   mode:'photo', plate:[], meal:defaultMeal(), plateName:'',
   photo:null, rec:{state:'unknown', progress:0, text:'', results:null, busy:false, error:'', added:new Set()},
   bc:{stream:null, timer:0, busy:false},
@@ -742,27 +742,58 @@ function scaleBar(min, max, bands, colors, value, labels){
   const pos = Math.max(0, Math.min(100, (value - min) / (max - min) * 100));
   return `<div class="scale"><span class="scale-mark" style="left:${pos}%"></span><div class="scale-track">${bands.map(([lo, hi], i) => `<i style="flex:${hi - lo};background:${colors[i]}"></i>`).join('')}</div><div class="scale-labels">${labels.map(l => `<span>${l}</span>`).join('')}</div></div>`;
 }
+const BPAGES = [['stats', 'Stats', 'Your numbers and daily targets'], ['body', 'Body', 'Body fat, check-ins and water weight'], ['settings', 'Settings', 'App settings and backup']];
+// a dial for BMI: four bands drawn in ink, the needle on the reading
+function bmiGauge(v){
+  const lo = 15, hi = 40, ang = x => Math.PI * (1 - (Math.max(lo, Math.min(hi, x)) - lo) / (hi - lo));
+  const P = (a, r) => [100 + r * Math.cos(a), 104 - r * Math.sin(a)].map(n => Math.round(n * 10) / 10);
+  const arc = (a0, a1, col) => { const [x0, y0] = P(ang(a0), 84), [x1, y1] = P(ang(a1), 84), [x2, y2] = P(ang(a1), 56), [x3, y3] = P(ang(a0), 56);
+    return `<path d="M${x0} ${y0} A84 84 0 0 1 ${x1} ${y1} L${x2} ${y2} A56 56 0 0 0 ${x3} ${y3} Z" fill="var(--${col})" stroke="#16201A" stroke-width="2.6" stroke-linejoin="round"/>`; };
+  const [nx, ny] = P(ang(v), 74);
+  return `<svg class="gauge" viewBox="-12 0 224 122" role="img" aria-label="BMI ${v.toFixed(1)}">
+    ${arc(15, 18.5, 'blue')}${arc(18.5, 25, 'green')}${arc(25, 30, 'yellow')}${arc(30, 40, 'orange')}
+    ${[[15, '15'], [18.5, '18.5'], [25, '25'], [30, '30'], [40, '40']].map(([x, l]) => { const [tx, ty] = P(ang(x), 96); return `<text x="${tx}" y="${ty + 3}" class="gauge-t">${l}</text>`; }).join('')}
+    <path d="M100 104 L${nx} ${ny}" stroke="var(--stroke)" stroke-width="5" stroke-linecap="round" class="gauge-n"/><circle cx="100" cy="104" r="8" fill="var(--paper)" stroke="var(--stroke)" stroke-width="3"/>
+  </svg>`;
+}
+// a hand-drawn figure beside a ruler, for the top of the Body page
+function bodyHeroSVG(d){
+  const h = heightIn(d), w = num(d.weightLb);
+  return `<div class="body-hero"><svg viewBox="0 0 220 150" aria-hidden="true">
+      <rect x="28" y="8" width="26" height="134" rx="4" fill="var(--yellow)" stroke="#16201A" stroke-width="2.6"/>
+      ${Array.from({length: 12}, (_, i) => `<path d="M28 ${18 + i * 10.5}h${i % 2 ? 7 : 12}" stroke="#16201A" stroke-width="2" stroke-linecap="round"/>`).join('')}
+      <circle cx="120" cy="30" r="15" fill="var(--paper)" stroke="#16201A" stroke-width="2.6"/>
+      <path d="M100 58c0-8 8-12 20-12s20 4 20 12v34h-8v46h-10v-36h-4v36h-10v-46h-8z" fill="var(--purple)" stroke="#16201A" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M100 60l-12 26M140 60l12 26" stroke="#16201A" stroke-width="7" stroke-linecap="round"/><path d="M100 60l-12 26M140 60l12 26" stroke="var(--purple)" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="115" cy="28" r="1.8" fill="#16201A"/><circle cx="125" cy="28" r="1.8" fill="#16201A"/><path d="M115 35q5 4 10 0" fill="none" stroke="#16201A" stroke-width="2" stroke-linecap="round"/>
+      <path d="M58 15h40" stroke="#16201A" stroke-width="2" stroke-dasharray="3 4"/>
+    </svg><p class="tnum">${h ? `${Math.floor(h / 12)}′${Math.round(h % 12)}″` : 'Height not set'}<br>${w ? `${dec(w)} lb` : 'Weight not set'}</p></div>`;
+}
 function renderBody(){
+  const pg = BPAGES.find(x => x[0] === S.bpage) || BPAGES[0];
+  $$('#view-body [data-bpg]').forEach(el => { el.hidden = el.dataset.bpg !== pg[0]; });
+  $$('#view-body .pager [data-bpage]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.bpage === pg[0])));
+  $('#bpage-title').textContent = pg[1]; $('#bpage-sub').textContent = pg[2];
+  $('#body-hero').innerHTML = bodyHeroSVG(S.draft);
   const d = S.draft, c = calcBody(d), el = $('#body-stats');
   $('#b-save').textContent = S.dirty ? 'Save stats' : 'Saved'; $('#b-save').disabled = !S.dirty;
   if (!c) { el.innerHTML = `<div class="empty"><b>Add your stats</b><p>Sex, age, height and weight give you BMI, a daily calorie goal and macro targets for the Today screen.</p></div>`; }
   else {
     const age = num(d.age), navy = navyBF(d), B = BF_BANDS[d.sex] || BF_BANDS.male, w = num(d.weightLb);
     el.innerHTML = `<div class="card sec"><h3 class="h">BMI</h3>
-        <div class="stat-big"><b class="tnum">${c.bmi.toFixed(1)}</b><span class="pill">${bmiCat(c.bmi)}</span></div>
-        ${scaleBar(15, 40, [[15,18.5],[18.5,25],[25,30],[30,40]], ['var(--fat)','var(--good)','var(--carbs)','var(--warn)'], c.bmi, ['15','18.5','25','30','40'])}
+        <div class="tum-sum">${bmiGauge(c.bmi)}<p class="kcal-line"><b class="kcal-big tnum">${c.bmi.toFixed(1)}</b><span class="pill">${bmiCat(c.bmi)}</span></p></div>
         <p class="fine">BMI only uses height and weight, so muscular builds can read high. ${age && age < 20 ? 'Under age 20, doctors read BMI against age-and-sex percentile charts, so treat these adult categories as a rough guide.' : 'The tape-measure body fat below says more about composition.'}</p></div>
       <div class="card sec"><h3 class="h">Daily targets</h3>
         <div class="kv tnum"><div><span>Burn at rest (BMR)</span><b>${int(c.bmr)}</b></div><div><span>Burn with activity</span><b>${int(c.tdee)}</b></div></div>
-        <div class="stat-big" style="margin-top:4px"><b class="tnum">${int(c.goal)}</b><span class="sub">kcal a day${c.custom ? ' (custom)' : ''}</span></div>
-        <div class="mtargets tnum"><div style="--c:var(--protein)"><span>Protein</span><b>${c.protein} g</b><small>${c.proteinLo}–${c.proteinHi} g range</small></div><div style="--c:var(--carbs)"><span>Carbs</span><b>${c.carbs} g</b></div><div style="--c:var(--fat)"><span>Fat</span><b>${c.fat} g</b></div></div>
+        <p class="kcal-line" style="justify-content:flex-start"><b class="kcal-big tnum">${int(c.goal)}</b><span class="kcal-lbl">kcal a day${c.custom ? ' (custom)' : ''}</span></p>
+        <div class="mtargets tnum"><div style="--c:var(--protein-bg)"><span>Protein</span><b>${c.protein} g</b><small>${c.proteinLo}–${c.proteinHi} g range</small></div><div style="--c:var(--carbs-bg)"><span>Carbs</span><b>${c.carbs} g</b></div><div style="--c:var(--fat-bg)"><span>Fat</span><b>${c.fat} g</b></div></div>
         <p class="fine">${c.floorHit ? 'The goal is held at a minimum so the deficit stays safe. ' : ''}Mifflin-St Jeor formula. Protein is 1 g per pound of body weight; anywhere within 10% of that counts as on target. Fat is 28% of calories and carbs fill the rest.</p></div>
 `;
   }
   renderBodyPhoto();
   const list = (S.profile.checkins || []).slice().sort((a, b) => b.date < a.date ? -1 : 1).slice(0, 12);
   $('#hist-sec').hidden = !list.length;
-  $('#hist').innerHTML = `<thead><tr><th>Date</th><th>Weight</th><th>BMI</th><th>Body fat</th></tr></thead><tbody>${list.map(c => `<tr><td>${esc(shortDay(c.date))}</td><td>${c.weightLb ? dec(num(c.weightLb)) + ' lb' : '—'}</td><td>${c.bmi ? num(c.bmi).toFixed(1) : '—'}</td><td>${c.bfp ? num(c.bfp).toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody>`;
+  $('#hist').innerHTML = `<thead><tr><th>Date</th><th>Weight</th><th>BMI</th><th>Body fat</th></tr></thead><tbody>${list.map(c => `<tr><td><b>${esc(shortDay(c.date))}</b></td><td>${c.weightLb ? dec(num(c.weightLb)) + ' lb' : '—'}</td><td>${c.bmi ? num(c.bmi).toFixed(1) : '—'}</td><td>${c.bfp ? num(c.bfp).toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody>`;
 }
 function saveStats(){
   readForm();
@@ -832,7 +863,7 @@ function renderBodyPhoto(){
     <p class="fine">${b.photo ? 'Compare your photo with these and tap the closest match.' : 'Take a photo, or tap the description that fits you best.'}${sug >= 0 ? ' The recognizer’s suggestion is marked; it’s a rough guess, so trust your eyes.' : ''}</p>
     <ul class="levels">${L.map(([v, cue], i) => `<li><button type="button" data-action="bf-level" data-i="${i}" aria-pressed="${b.level === i}"><b>${i === L.length - 1 ? v + '%+' : '~' + v + '%'}</b><span>${i === sug ? '<em>Suggested from your photo</em><br>' : ''}${esc(cue)}</span></button></li>`).join('')}</ul>
     ${res ? `<div class="card sec"><h3 class="h">Your body fat estimate</h3>
-      <div class="stat-big"><b class="tnum">${Math.round(res.v)}%</b><span class="sub tnum">likely ${Math.round(res.low)}–${Math.round(res.high)}%</span><span class="pill">${bfCat(d.sex, res.v)}</span></div>
+      <p class="kcal-line" style="justify-content:flex-start;flex-wrap:wrap"><b class="kcal-big tnum">${Math.round(res.v)}%</b><span class="kcal-lbl tnum">likely ${Math.round(res.low)}–${Math.round(res.high)}%</span><span class="pill">${bfCat(d.sex, res.v)}</span></p>
       <ul class="methods tnum">${res.est.map(e => `<li><span>${esc(e.name)}</span><span>${e.v.toFixed(1)}%</span></li>`).join('')}</ul>
       ${num(d.weightLb) ? `<div class="kv tnum"><div><span>Lean mass</span><b>${int(num(d.weightLb) * (1 - res.v / 100))} lb</b></div><div><span>Fat mass</span><b>${int(num(d.weightLb) * res.v / 100)} lb</b></div></div>` : ''}
       <p class="fine">${res.est.length < 3 ? 'Add ' + [!navyBF(d) && 'tape measurements', S.bf.level == null && 'a photo check'].filter(Boolean).join(' and ') + ' for a tighter estimate. ' : ''}Blends every method you've filled in. Within a few points of a DEXA scan when measured carefully.</p>
@@ -1569,7 +1600,7 @@ function renderMeals(){
   const shelf = (label, list, empty) => `<div class="fr-shelf"><span class="fr-tag">${label}</span><div class="fr-row">${list.length ? list.map(tub).join('') : `<span class="fr-empty">${empty}</span>`}</div></div>`;
   const sel = all.find(r => r.id === S.ml.sel);
   el.innerHTML = `<div class="sec-head"><h2 class="h">Meals you cook</h2><button type="button" class="btn primary sm" data-action="r-new">+ New meal</button></div>
-    ${all.length ? `<div class="fridge">
+    ${all.length ? `<div class="fridge"><div class="fr-in"><i class="fr-bulb" aria-hidden="true"></i>
         ${shelf('Pinned', pinned, 'Pin a meal and it stays up here, however rarely you make it.')}
         ${shelf('Most used', used, 'Log a portion of a meal and it lands here.')}
         ${shelf('Made lately', recent, 'Nothing else yet.')}
@@ -1578,7 +1609,7 @@ function renderMeals(){
             <span class="fr-handle"><b>${label}</b>${list.length ? `<small class="tnum">${pg + 1} of ${pages}</small>` : ''}</span>
             <button type="button" class="fr-arrow" data-action="fr-page" data-d="${d}" data-step="1" aria-label="Next in ${label}" ${pg >= pages - 1 ? 'disabled' : ''}>${CHEV_R}</button></div>
             <div class="fr-row">${list.length ? list.slice(pg * 3, pg * 3 + 3).map(tub).join('') : '<span class="fr-empty">Empty. Meals that aren’t on a shelf go in here.</span>'}</div></div>`; }).join('')}
-      </div>
+      </div><i class="fr-foot l" aria-hidden="true"></i><i class="fr-foot r" aria-hidden="true"></i></div>
       ${sel ? (() => { const t = recipeTotals(sel), g = recipeCooked(sel);
         return `<div class="fr-pick"><b>${esc(sel.name)}</b><small>${sel.items.length} ingredient${sel.items.length === 1 ? '' : 's'} · batch ${int(g)} g · ${int(t.calories)} kcal${sel.servings ? ` · ${sel.servings} servings` : ''}${sel.uses ? ` · logged ${sel.uses}×` : ''}</small><small class="tnum">${esc(perLine(t, g))}</small>
           <div class="fr-acts"><button type="button" class="btn primary sm" data-action="r-log" data-id="${esc(sel.id)}">Log a portion</button><button type="button" class="btn ghost sm" data-action="r-edit" data-id="${esc(sel.id)}">Edit</button><button type="button" class="btn ghost sm" data-action="r-pin" data-id="${esc(sel.id)}" aria-pressed="${!!sel.pin}">${sel.pin ? '★ Pinned' : '☆ Pin'}</button></div></div>`; })()
@@ -2982,6 +3013,8 @@ document.addEventListener('click', e => {
     // the arrows page between the stomach, the water glass and the scale; days are picked from the calendar
     case 'page-prev': case 'page-next': { const i = PAGES.indexOf(S.page) + (a === 'page-next' ? 1 : -1); S.page = PAGES[(i + PAGES.length) % PAGES.length]; renderToday(); window.scrollTo({top:0}); break; }
     case 'page': S.page = b.dataset.page; renderToday(); break;
+    case 'bpage-prev': case 'bpage-next': { const i = BPAGES.findIndex(x => x[0] === S.bpage) + (a === 'bpage-next' ? 1 : -1); S.bpage = BPAGES[(i + BPAGES.length) % BPAGES.length][0]; renderBody(); window.scrollTo({top:0}); break; }
+    case 'bpage': S.bpage = b.dataset.bpage; renderBody(); break;
     case 'cal-open': S.cal.month = S.viewDate.slice(0, 7); history.pushState({macro:1}, ''); setTab('cal'); break;
     case 'cal-month': { const [y, m] = S.cal.month.split('-').map(Number); const d = new Date(y, m - 1 + Number(b.dataset.d), 1); const k = dayKey(d).slice(0, 7); if (k <= dayKey().slice(0, 7)) { S.cal.month = k; renderCal(); } break; }
     case 'cal-day': S.viewDate = b.dataset.date; S.open = null; S.wSel = null; if (history.state?.macro) history.back(); else setTab('today'); break;
@@ -3127,7 +3160,7 @@ document.addEventListener('click', e => {
     case 'ai-choose': {
       const v = b.dataset.v;
       if (v === 'device') { setAiChoice('device'); toast('Using the free on-device recognizer. Switch anytime in Body → Settings.'); if (b.dataset.ctx === 'eo') renderMeals(); }
-      else { setAiChoice('plus'); if (b.dataset.ctx === 'eo') renderMeals(); setTab('body'); requestAnimationFrame(() => { const f = $('#set-plus'); f?.scrollIntoView({behavior:reduced() ? 'auto' : 'smooth', block:'center'}); f?.focus({preventScroll:true}); }); }
+      else { setAiChoice('plus'); if (b.dataset.ctx === 'eo') renderMeals(); S.bpage = 'settings'; setTab('body'); requestAnimationFrame(() => { const f = $('#set-plus'); f?.scrollIntoView({behavior:reduced() ? 'auto' : 'smooth', block:'center'}); f?.focus({preventScroll:true}); }); }
       break; }
     case 'plus-soon': toast('Munchmark Plus is coming soon. The on-device recognizer is free in the meantime.'); break;
     case 'plus-check': plusActivate(); break;
@@ -3364,4 +3397,4 @@ async function boot(){
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 boot().catch(err => { console.error(err); document.querySelector('#meals').innerHTML = '<p class="err">Munchmark couldn’t load its food data. Reload the page.</p>'; });
-window.__ml = {drinkOz, pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
+window.__ml = {drinkOz, fillBodyForm, renderBody, pantryFood, hrStop, healthImport, readScale, readText, parseIngredients, estimate, renderToday, renderMeals, renderSports, addWater, matchContainers, packScan, localMatches, S, parseMeal, labelItems, addToPlate, totalsOf, setTab, renderScan, addPantry, pantryFood, saveDay, playWeek, weekOf};
