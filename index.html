@@ -32,10 +32,16 @@
   <section class="view" id="view-today" aria-label="Daily log">
     <div id="wrap-banner"></div>
     <div class="daynav">
-      <button type="button" class="iconbtn" data-action="day-prev" aria-label="Previous day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
-      <div class="daynav-label"><b id="day-title">Today</b><span id="day-sub"></span></div>
-      <button type="button" class="iconbtn" id="day-next" data-action="day-next" aria-label="Next day"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
+      <button type="button" class="iconbtn" data-action="page-prev" aria-label="Previous page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg></button>
+      <button type="button" class="daynav-label" data-action="cal-open" aria-label="Pick a day from the calendar"><b><span id="day-title">Today</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></b><span id="day-sub"></span></button>
+      <button type="button" class="iconbtn" data-action="page-next" aria-label="Next page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
     </div>
+    <div class="pager" role="group" aria-label="Pages">
+      <button type="button" data-action="page" data-page="food">Food</button>
+      <button type="button" data-action="page" data-page="water">Water</button>
+      <button type="button" data-action="page" data-page="weight">Water weight</button>
+    </div>
+    <div class="view" data-pg="food">
     <div class="tum-sum">
       <p class="kcal-line"><b class="kcal-big tnum" id="kcal-left">2,200</b><span class="kcal-lbl" id="kcal-left-lbl">kcal left</span></p>
       <div id="tummy"></div>
@@ -50,8 +56,6 @@
         <ul class="nlist" id="nlist"></ul>
       </details>
     </div>
-    <div class="card sec" id="water-card"></div>
-    <div class="card sec" id="ww-card"></div>
     <div class="sec">
       <div class="sec-head"><h2 class="h">Last 7 days</h2><span class="sub" id="week-avg"></span></div>
       <div class="week" id="week"></div>
@@ -60,7 +64,13 @@
       <div class="sec-head"><h2 class="h">Meals</h2><button type="button" class="btn ghost sm" data-action="tab" data-tab="scan">+ Add food</button></div>
       <div id="meals"></div>
     </div>
+    </div>
+    <div class="card sec" id="water-card" data-pg="water" hidden></div>
+    <div class="card sec" id="ww-card" data-pg="weight" hidden></div>
   </section>
+
+  <!-- CALENDAR -->
+  <section class="view" id="view-cal" aria-label="Calendar" hidden></section>
 
   <!-- WHAT FILLED A COLOR -->
   <section class="view" id="view-macro" aria-label="What added to this macro" hidden></section>

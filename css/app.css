@@ -754,3 +754,29 @@ button.nrow{width:100%;background:none;border:0;border-top:0;text-align:left;col
 .ww-why .amt.pos{color:var(--carbs)} .ww-why .amt.neg{color:var(--fat)}
 .ww-why p{grid-column:1/-1;margin:0;font-size:13.5px;color:var(--muted)}
 .ww-start{margin:0;font-size:13.5px}
+/* day title opens the calendar; arrows page between the stomach, the glass and the scale */
+button.daynav-label{background:none;border:0;padding:4px 10px;color:inherit;border-radius:var(--wob-sm)}
+button.daynav-label b{display:flex;align-items:center;justify-content:center;gap:4px}
+button.daynav-label svg{width:18px;height:18px;color:var(--accent)}
+.pager{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:-16px}
+.pager button{min-height:36px;background:none;border:0;border-bottom:3px solid var(--line);color:var(--muted);font-weight:650;font-size:13.5px}
+.pager button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.cal-head{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:-18px}
+.cal{display:flex;flex-direction:column;gap:14px}
+.cal-week{display:flex;flex-direction:column;gap:6px;padding-bottom:12px;border-bottom:1.5px dashed var(--line)}
+.cal-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-day{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;min-height:58px;padding:5px 0 4px;background:none;border:2px solid transparent;border-radius:var(--wob-sm);color:inherit}
+.cal-day b{font-family:var(--f-hand);font-weight:700;font-size:16px;line-height:1}
+.cal-day:disabled{opacity:.3}
+.cal-day.today b{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.cal-day[aria-pressed="true"]{border-color:var(--stroke);background:var(--surface-2)}
+.cal-fill{position:relative;width:16px;height:24px;border:1.5px solid var(--stroke);border-radius:5px 4px 6px 4px;overflow:hidden;background:var(--surface)}
+.cal-fill i{position:absolute;left:0;right:0;bottom:0;background:var(--green)}
+.cal-fill i.over{background:var(--orange)}
+.cal-drop{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--blue);border:1px solid var(--stroke)}
+.cal-note{display:flex;align-items:center;gap:8px}
+.cal-note input,.weeknote{flex:1;min-width:0;width:100%;background:none;border:0;border-bottom:1.5px solid transparent;padding:4px 2px;font-size:13.5px;color:var(--ink)}
+.cal-note input::placeholder,.weeknote::placeholder{color:var(--muted);opacity:.8}
+.cal-note input:focus,.weeknote:focus{outline:none;border-bottom-color:var(--accent)}
+.weeknote{display:block;font-size:12.5px;margin-top:2px}
+button.daynav-label b span{font-size:inherit;color:inherit}

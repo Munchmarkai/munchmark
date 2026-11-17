@@ -73,7 +73,7 @@ function defaultMeal(){ const h = new Date().getHours(); return h < 11 ? 'breakf
 
 /* ---------- state ---------- */
 const S = {
-  tab:'today', macro:'protein', viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
+  tab:'today', macro:'protein', page:'food', cal:{month:null}, viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
   mode:'photo', plate:[], meal:defaultMeal(), plateName:'',
   photo:null, rec:{state:'unknown', progress:0, text:'', results:null, busy:false, error:'', added:new Set()},
   bc:{stream:null, timer:0, busy:false},
@@ -244,7 +244,8 @@ function renderToday(){
   const date = S.viewDate, isToday = date === dayKey();
   $('#day-title').textContent = relDay(date);
   $('#day-sub').textContent = isToday || date === shift(dayKey(), -1) ? longDay(date) : String(toDate(date).getFullYear());
-  $('#day-next').disabled = isToday;
+  $$('#view-today [data-pg]').forEach(el => { el.hidden = el.dataset.pg !== S.page; });
+  $$('.pager [data-page]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.page === S.page)));
   const t = dayTotals(date), g = targets();
   $('#goal-set').hidden = g.set;
   const left = g.calories - t.calories;
@@ -285,6 +286,35 @@ function renderToday(){
     const sum = list.reduce((a, e) => a + entryTotals(e).calories, 0);
     return `<div class="meal-group"><div class="meal-head"><b>${ml}</b><span class="tnum">${int(sum)} kcal</span></div><ul class="entries">${list.map(entryHTML).join('')}</ul></div>`;
   }).join('')}</div>`;
+}
+/* ---------- render: calendar ---------- */
+const weekNotes = () => (S.profile.weekNotes ||= {});
+const PAGES = ['food', 'water', 'weight'];
+function renderCal(){
+  const today = dayKey(), cur = today.slice(0, 7);
+  if (!S.cal.month) S.cal.month = S.viewDate.slice(0, 7);
+  const [y, m] = S.cal.month.split('-').map(Number), first = new Date(y, m - 1, 1);
+  const goal = targets().calories || 2200, P = pins(), notes = weekNotes();
+  const weeks = [];
+  for (let wk = weekStart(dayKey(first)); wk.slice(0, 7) <= S.cal.month; wk = shift(wk, 7)) weeks.push(wk);
+  const cell = k => {
+    if (k.slice(0, 7) !== S.cal.month) return '<span class="cal-day out"></span>';
+    const d = S.days[k], kcal = d?.entries?.length ? dayTotals(k).calories : 0, f = kcal / goal, water = (d?.water || []).length > 0;
+    const label = `${longDay(k)}${kcal ? `, ${int(kcal)} calories` : ', nothing logged'}`;
+    return `<button type="button" class="cal-day${k === today ? ' today' : ''}" data-action="cal-day" data-date="${k}" aria-pressed="${k === S.viewDate}" aria-label="${esc(label)}" ${k > today ? 'disabled' : ''}>
+      <b>${Number(k.slice(8))}</b><span class="cal-fill"><i class="${f > 1.1 ? 'over' : ''}" style="height:${Math.min(100, f * 100)}%"></i></span>${water ? '<i class="cal-drop"></i>' : ''}</button>`;
+  };
+  $('#view-cal').innerHTML = `<div class="daynav">
+      <button type="button" class="iconbtn" data-action="cal-month" data-d="-1" aria-label="Previous month">${CHEV_L}</button>
+      <div class="daynav-label"><b>${esc(first.toLocaleDateString(undefined, {month:'long'}))}</b><span>${y}</span></div>
+      <button type="button" class="iconbtn" data-action="cal-month" data-d="1" aria-label="Next month" ${S.cal.month >= cur ? 'disabled' : ''}>${CHEV_R}</button>
+    </div>
+    <div class="cal-head" aria-hidden="true">${['M','T','W','T','F','S','S'].map(d => `<span>${d}</span>`).join('')}</div>
+    <div class="cal">${weeks.map(wk => { const pinned = P.some(x => x.start === wk);
+      return `<div class="cal-week"><div class="cal-row">${Array.from({length:7}, (_, i) => cell(shift(wk, i))).join('')}</div>
+        ${wk > today ? '' : `<label class="cal-note">${pinned ? '<span class="badge">pinned</span>' : ''}<input type="text" data-weeknote="${wk}" value="${esc(notes[wk] || '')}" maxlength="140" placeholder="Note for this week" aria-label="Note for the week of ${esc(shortDay(wk))}"></label>`}</div>`; }).join('')}</div>
+    <p class="fine">The bar in each day fills toward your calorie goal, and turns orange when you went past it. A blue dot means water was logged. Week notes show up again when you compare weeks in Sports, so a week that felt great but wasn’t realistic (a cut, a holiday, a tournament) says so.</p>
+    <div class="row2"><button type="button" class="btn ghost" data-action="macro-back">Back</button><button type="button" class="btn primary" data-action="cal-day" data-date="${today}">Go to today</button></div>`;
 }
 /* ---------- render: what filled a color ---------- */
 function renderMacro(){
@@ -1961,9 +1991,9 @@ function compareHTML(){
       <div class="field"><label for="cmp-b">Compared with</label>${sel('cmp-b', B)}</div>
       ${A === B ? '<p class="fine">Pick two different weeks.</p>' : ''}</div>
     ${table}${recs}
-    ${P.length ? `<div class="sec"><h3 class="h">Pinned weeks</h3><ul class="cilist card">${P.map(p => `<li><span class="grow"><input type="text" class="pinname" data-pin="${esc(p.start)}" value="${esc(p.label)}" maxlength="40" aria-label="Name for this pinned week"><small>${esc(rangeText(p.start))}${p.snap?.feel != null ? ` · feel ${p.snap.feel.toFixed(1)}` : ''}</small></span><button type="button" class="linkbtn" data-action="pin-week" data-start="${esc(p.start)}">Unpin</button></li>`).join('')}</ul></div>` : ''}
+    ${P.length ? `<div class="sec"><h3 class="h">Pinned weeks</h3><ul class="cilist card">${P.map(p => `<li><span class="grow"><input type="text" class="pinname" data-pin="${esc(p.start)}" value="${esc(p.label)}" maxlength="40" aria-label="Name for this pinned week"><input type="text" class="pinname weeknote" data-weeknote="${esc(p.start)}" value="${esc(weekNotes()[p.start] || '')}" maxlength="140" placeholder="Add a note (e.g. cut week, not realistic)" aria-label="Note for this week"><small>${esc(rangeText(p.start))}${p.snap?.feel != null ? ` · feel ${p.snap.feel.toFixed(1)}` : ''}</small></span><button type="button" class="linkbtn" data-action="pin-week" data-start="${esc(p.start)}">Unpin</button></li>`).join('')}</ul></div>` : ''}
     <div class="sec"><h3 class="h">Your weeks</h3><ul class="cilist card">${weeks.map(w => { const pinned = P.some(p => p.start === w.start);
-      return `<li><span><b>${esc(wkLabel(w.start))}${best && best.start === w.start ? ' <span class="badge">best feel</span>' : ''}</b><small>${w.st.feel != null ? `feel ${w.st.feel.toFixed(1)} · ` : ''}${w.st.logged} day${w.st.logged === 1 ? '' : 's'} logged · ${w.st.checkins} check-in${w.st.checkins === 1 ? '' : 's'}${w.st.weightChange != null ? ` · ${sgn(w.st.weightChange)} lb` : ''}</small></span>
+      return `<li><span><b>${esc(wkLabel(w.start))}${best && best.start === w.start ? ' <span class="badge">best feel</span>' : ''}</b><small>${w.st.feel != null ? `feel ${w.st.feel.toFixed(1)} · ` : ''}${w.st.logged} day${w.st.logged === 1 ? '' : 's'} logged · ${w.st.checkins} check-in${w.st.checkins === 1 ? '' : 's'}${w.st.weightChange != null ? ` · ${sgn(w.st.weightChange)} lb` : ''}</small><input type="text" class="pinname weeknote" data-weeknote="${w.start}" value="${esc(weekNotes()[w.start] || '')}" maxlength="140" placeholder="Add a note (e.g. cut week, not realistic)" aria-label="Note for this week"></span>
         <button type="button" class="btn ${pinned ? 'primary' : 'ghost'} sm" data-action="pin-week" data-start="${w.start}" aria-pressed="${pinned}">${pinned ? '★ Pinned' : 'Pin'}</button></li>`; }).join('')}</ul>
       <p class="fine">Felt great one week? Pin it. It stays here (and on the Week tab) so you can always compare against it and see what to repeat.</p></div>`;
 }
@@ -2732,11 +2762,12 @@ function logCombo(c){
   setTab('scan'); toast('On your plate. Adjust anything, then add it to your log.');
 }
 
+const CHEV_L = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>', CHEV_R = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg>';
 /* ---------- tabs, toast ---------- */
 function setTab(t){
   S.tab = t;
-  const view = ['containers', 'eatout'].includes(t) ? 'meals' : t, nav = ['pantry', 'containers', 'eatout'].includes(t) ? 'meals' : t === 'macro' ? 'today' : t;
-  ['today','macro','week','scan','meals','pantry','sports','body'].forEach(v => $('#view-' + v).hidden = v !== view);
+  const view = ['containers', 'eatout'].includes(t) ? 'meals' : t, nav = ['pantry', 'containers', 'eatout'].includes(t) ? 'meals' : t === 'macro' || t === 'cal' ? 'today' : t;
+  ['today','macro','cal','week','scan','meals','pantry','sports','body'].forEach(v => $('#view-' + v).hidden = v !== view);
   $$('.tabs [data-action="tab"]').forEach(b => b.dataset.tab === nav ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   $('#body-btn').toggleAttribute('aria-current', t === 'body');
   $$('#view-pantry .seg [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
@@ -2746,6 +2777,7 @@ function setTab(t){
   if (t !== 'scan') bcStop();
   if (t === 'today') renderToday();
   if (t === 'macro') renderMacro();
+  if (t === 'cal') renderCal();
   if (t === 'scan') { renderScan(); if (S.rec.state === 'unknown') checkRecognizer(); }
   if (t === 'body') { renderBody(); renderGemStatus(); }
   if (t === 'week') renderWeek();
@@ -2764,7 +2796,7 @@ function applyTheme(pick){
 }
 matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(settings().theme));
 // the phone's back button closes a color's page instead of leaving the app
-window.addEventListener('popstate', () => { if (S.tab === 'macro') setTab('today'); });
+window.addEventListener('popstate', () => { if (S.tab === 'macro' || S.tab === 'cal') setTab('today'); });
 let toastT;
 function toast(msg){ const el = $('#toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); }
 
@@ -2780,8 +2812,12 @@ document.addEventListener('click', e => {
     case 'macro-back': if (history.state?.macro) history.back(); else setTab('today'); break;
     case 'macro-entry': S.open = b.dataset.id; S.confirmDel = null; if (history.state?.macro) history.replaceState(null, ''); setTab('today'); document.querySelector(`[data-action="entry-toggle"][data-id="${CSS.escape(b.dataset.id)}"]`)?.scrollIntoView({block:'center'}); break;
     case 'theme': settings().theme = b.dataset.themePick; saveProfile(); applyTheme(settings().theme); break;
-    case 'day-prev': S.viewDate = shift(S.viewDate, -1); S.open = null; renderToday(); break;
-    case 'day-next': if (S.viewDate < dayKey()) { S.viewDate = shift(S.viewDate, 1); S.open = null; renderToday(); } break;
+    // the arrows page between the stomach, the water glass and the scale; days are picked from the calendar
+    case 'page-prev': case 'page-next': { const i = PAGES.indexOf(S.page) + (a === 'page-next' ? 1 : -1); S.page = PAGES[(i + PAGES.length) % PAGES.length]; renderToday(); window.scrollTo({top:0}); break; }
+    case 'page': S.page = b.dataset.page; renderToday(); break;
+    case 'cal-open': S.cal.month = S.viewDate.slice(0, 7); history.pushState({macro:1}, ''); setTab('cal'); break;
+    case 'cal-month': { const [y, m] = S.cal.month.split('-').map(Number); const d = new Date(y, m - 1 + Number(b.dataset.d), 1); const k = dayKey(d).slice(0, 7); if (k <= dayKey().slice(0, 7)) { S.cal.month = k; renderCal(); } break; }
+    case 'cal-day': S.viewDate = b.dataset.date; S.open = null; S.wSel = null; if (history.state?.macro) history.back(); else setTab('today'); break;
     case 'day-pick': S.viewDate = b.dataset.date; S.open = null; renderToday(); break;
     case 'entry-toggle': S.open = S.open === b.dataset.id ? null : b.dataset.id; S.confirmDel = null; renderToday(); break;
     case 'entry-mult': { const en = S.days[S.viewDate]?.entries.find(x => x.id === b.dataset.id); if (en) { en.mult = Number(b.dataset.m); saveDay(S.viewDate); renderToday(); } break; }
@@ -3045,6 +3081,7 @@ document.addEventListener('change', e => {
   }
   if (t.dataset.pr) { const d = dayOf(t.dataset.date); d.practice ||= {}; d.practice[t.dataset.pr] = num(t.value) || ''; if (num(t.value) && !d.practice.kind) d.practice.kind = 'practice'; saveDay(t.dataset.date); renderSports(); return; }
   if (t.dataset.act) { const d = dayOf(t.dataset.date); d.activity ||= {}; d.activity[t.dataset.act] = num(t.value) || ''; saveDay(t.dataset.date); return; }
+  if (t.dataset.weeknote) { const v = t.value.trim().slice(0, 140), N = weekNotes(); if (v) N[t.dataset.weeknote] = v; else delete N[t.dataset.weeknote]; saveProfile(); toast(v ? 'Week note saved' : 'Week note removed'); return; }
   if (t.dataset.pin) { const pn = pins().find(x => x.start === t.dataset.pin); if (pn) { pn.label = t.value.trim().slice(0, 40) || pn.label; saveProfile(); } return; }
   if (t.id === 'r-cooked-unit' && S.ml.edit) { S.ml.edit.cookedUnit = t.value; renderRecipeTotals(); return; }
   if (t.id === 'r-pot' && S.ml.edit) { S.ml.edit.potId = t.value; renderRecipeTotals(); return; }
