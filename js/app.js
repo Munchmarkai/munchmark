@@ -3,6 +3,7 @@ import { LABELS, PANTRY } from './labels.js';
 import { mealIdeas, dayPlan, scaleT, roleOf } from './planner.js';
 import { summarize, weekStart, addDays, SPORTS } from './week.js';
 import { playWrapped } from './wrapped.js';
+import { MACRO_BY, stomachHTML, updateStomach, macroRowsHTML, macroPageHTML } from './tummy.js';
 import { parseMeal, labelByName, parseIngredients, parseSegment, splitMeal, gramsFromMeasure } from './parse.js';
 import * as store from './store.js';
 import { offP100, getProduct, displayName } from './off.js';
@@ -68,7 +69,7 @@ function defaultMeal(){ const h = new Date().getHours(); return h < 11 ? 'breakf
 
 /* ---------- state ---------- */
 const S = {
-  tab:'today', viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
+  tab:'today', macro:'protein', viewDate:dayKey(), profile:{}, days:{}, open:null, confirmDel:null,
   mode:'photo', plate:[], meal:defaultMeal(), plateName:'',
   photo:null, rec:{state:'unknown', progress:0, text:'', results:null, busy:false, error:'', added:new Set()},
   bc:{stream:null, timer:0, busy:false},
@@ -242,20 +243,15 @@ function renderToday(){
   $('#day-next').disabled = isToday;
   const t = dayTotals(date), g = targets();
   $('#goal-set').hidden = g.set;
-  const left = g.calories - t.calories, frac = Math.min(1, t.calories / g.calories);
-  const ring = $('#ring-fill');
-  ring.setAttribute('stroke-dashoffset', String(326.73 * (1 - frac)));
-  ring.classList.toggle('over', left < 0);
+  const left = g.calories - t.calories;
+  const tum = $('#tummy'); if (!tum.firstElementChild) tum.innerHTML = stomachHTML();
+  updateStomach(tum.firstElementChild, t, g.calories);
   $('#kcal-left').textContent = int(Math.abs(left));
   $('#kcal-left-lbl').textContent = left < 0 ? 'kcal over' : 'kcal left';
+  $('#kcal-left-lbl').classList.toggle('over', left < 0);
   $('#kcal-eaten').textContent = int(t.calories);
   $('#kcal-goal').textContent = int(g.calories);
-  const pv = t.protein_g, plo = g.protein_lo, phi = g.protein_hi;
-  const pState = pv > phi ? 'over' : pv >= plo ? 'in' : '';
-  $('#macros').innerHTML = `<div><div class="macro-top tnum"><b>Protein${pState === 'in' ? ' <em class="ok">in range</em>' : pState === 'over' ? ' <em class="hi">above range</em>' : ''}</b><span>${int(pv)} / ${int(plo)}–${int(phi)} g</span></div>
-      <div class="bar range" style="--lo:${plo / phi * 100}%"><i style="--c:var(--protein);width:${Math.min(100, pv / (phi || 1) * 100)}%"></i></div></div>` +
-    [['carbs_g','Carbs','--carbs'],['fat_g','Fat','--fat']].map(([k, l, c]) =>
-    `<div><div class="macro-top tnum"><b>${l}</b><span>${int(t[k])} / ${int(g[k])} g</span></div><div class="bar"><i style="--c:var(${c});width:${Math.min(100, t[k] / (g[k] || 1) * 100)}%"></i></div></div>`).join('');
+  $('#macros').innerHTML = macroRowsHTML(t, g);
   const keys = Array.from({length:7}, (_, i) => shift(date, i - 6));
   const vals = keys.map(k => dayTotals(k).calories);
   const top = Math.max(g.calories * 1.15, ...vals.map(v => v * 1.05), 1);
@@ -285,6 +281,20 @@ function renderToday(){
     const sum = list.reduce((a, e) => a + entryTotals(e).calories, 0);
     return `<div class="meal-group"><div class="meal-head"><b>${ml}</b><span class="tnum">${int(sum)} kcal</span></div><ul class="entries">${list.map(entryHTML).join('')}</ul></div>`;
   }).join('')}</div>`;
+}
+/* ---------- render: what filled a color ---------- */
+function renderMacro(){
+  const m = MACRO_BY[S.macro] || MACRO_BY.protein, date = S.viewDate, ki = KI[m.k];
+  const rows = [];
+  for (const e of S.days[date]?.entries || []) {
+    const mult = num(e.mult) || 1, items = e.items || [];
+    for (const i of items) {
+      const grams = (i.grams != null ? i.grams : itemGrams(i)) * mult;
+      rows.push({entryId:e.id, name: items.length === 1 ? e.name || i.name : i.name, grams: num(i.p[ki]) * grams / 100,
+        sub: [MEAL_LABEL[e.meal || 'snack'], items.length > 1 ? e.name : '', int(grams) + ' g'].filter(Boolean).join(' · ')});
+    }
+  }
+  $('#view-macro').innerHTML = macroPageHTML({macro:m.id, t:dayTotals(date), g:targets(), rows, dayLabel:relDay(date)});
 }
 function entryHTML(e){
   const m = num(e.mult) || 1, t = entryTotals(e), open = S.open === e.id;
@@ -2668,8 +2678,8 @@ function logCombo(c){
 /* ---------- tabs, toast ---------- */
 function setTab(t){
   S.tab = t;
-  const view = ['containers', 'eatout'].includes(t) ? 'meals' : t, nav = ['pantry', 'containers', 'eatout'].includes(t) ? 'meals' : t;
-  ['today','week','scan','meals','pantry','sports','body'].forEach(v => $('#view-' + v).hidden = v !== view);
+  const view = ['containers', 'eatout'].includes(t) ? 'meals' : t, nav = ['pantry', 'containers', 'eatout'].includes(t) ? 'meals' : t === 'macro' ? 'today' : t;
+  ['today','macro','week','scan','meals','pantry','sports','body'].forEach(v => $('#view-' + v).hidden = v !== view);
   $$('.tabs [data-action="tab"]').forEach(b => b.dataset.tab === nav ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
   $('#body-btn').toggleAttribute('aria-current', t === 'body');
   $$('#view-pantry .seg [data-tab]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
@@ -2678,6 +2688,7 @@ function setTab(t){
   if (t === 'sports') renderSports();
   if (t !== 'scan') bcStop();
   if (t === 'today') renderToday();
+  if (t === 'macro') renderMacro();
   if (t === 'scan') { renderScan(); if (S.rec.state === 'unknown') checkRecognizer(); }
   if (t === 'body') { renderBody(); renderGemStatus(); }
   if (t === 'week') renderWeek();
@@ -2685,6 +2696,18 @@ function setTab(t){
   if (t !== 'scan' && S.bcTarget && t !== 'pantry') S.bcTarget = null;
   window.scrollTo({top:0});
 }
+/* ---------- light / dark ---------- */
+function applyTheme(pick){
+  const t = pick === 'light' || pick === 'dark' ? pick : 'auto', root = document.documentElement;
+  if (t === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+  try { if (t === 'auto') localStorage.removeItem('munchmark.theme'); else localStorage.setItem('munchmark.theme', t); } catch {}
+  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  $('#theme-color')?.setAttribute('content', dark ? '#101412' : '#FFFFFF');
+  $$('[data-theme-pick]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themePick === t)));
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(settings().theme));
+// the phone's back button closes a color's page instead of leaving the app
+window.addEventListener('popstate', () => { if (S.tab === 'macro') setTab('today'); });
 let toastT;
 function toast(msg){ const el = $('#toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); }
 
@@ -2694,6 +2717,10 @@ document.addEventListener('click', e => {
   const a = b.dataset.action;
   switch (a) {
     case 'tab': setTab(b.dataset.tab); break;
+    case 'macro': { const was = S.tab; S.macro = b.dataset.macro; if (was !== 'macro') history.pushState({macro:1}, ''); setTab('macro'); break; }
+    case 'macro-back': if (history.state?.macro) history.back(); else setTab('today'); break;
+    case 'macro-entry': S.open = b.dataset.id; S.confirmDel = null; if (history.state?.macro) history.replaceState(null, ''); setTab('today'); document.querySelector(`[data-action="entry-toggle"][data-id="${CSS.escape(b.dataset.id)}"]`)?.scrollIntoView({block:'center'}); break;
+    case 'theme': settings().theme = b.dataset.themePick; saveProfile(); applyTheme(settings().theme); break;
     case 'day-prev': S.viewDate = shift(S.viewDate, -1); S.open = null; renderToday(); break;
     case 'day-next': if (S.viewDate < dayKey()) { S.viewDate = shift(S.viewDate, 1); S.open = null; renderToday(); } break;
     case 'day-pick': S.viewDate = b.dataset.date; S.open = null; renderToday(); break;
@@ -3039,7 +3066,7 @@ async function boot(){
   setVocab([...vw]);
   initRestaurants({foods:db.foods, byId:BYID, search:(q, n) => search(INDEX, q, n)});
   S.pantry.forEach(f => { if (f.src === 'usda' && !f.full && BYID.get(f.ndb)) f.full = BYID.get(f.ndb)[1]; });
-  fillBodyForm(); setFdcKey(settings().fdcKey);
+  fillBodyForm(); setFdcKey(settings().fdcKey); applyTheme(settings().theme || (() => { try { return localStorage.getItem('munchmark.theme'); } catch { return null; } })());
   const h = (location.hash || '').slice(1);
   $('#b-sport').innerHTML = Object.entries(SPORTS).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
   fillBodyForm();

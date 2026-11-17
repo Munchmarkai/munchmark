@@ -11,6 +11,7 @@ Munchmark is built on the open-source software and open data below. Each keeps i
 | [Tesseract.js](https://github.com/naptha/tesseract.js) 7.0.0 and the English LSTM model | Reads labels, recipe cards and scale displays | Apache License 2.0 | `vendor/tesseract/LICENSE-tesseract.txt` |
 | `ssd_int` seven-segment model from [tessdata_ssd](https://github.com/Shreeshrii/tessdata_ssd) | Reads digital scale displays | Apache License 2.0 | `vendor/tesseract/LICENSE-ssd.txt` |
 | [Archivo](https://github.com/Omnibus-Type/Archivo) font | Headings | SIL Open Font License 1.1 | `fonts/LICENSE-archivo.txt` |
+| [Shantell Sans](https://github.com/arrowtype/shantell-sans) font | Hand-drawn headings and numbers | SIL Open Font License 1.1 | `fonts/LICENSE-shantell-sans.txt` |
 | [Figtree](https://github.com/erikdkennedy/figtree) font | Body text | SIL Open Font License 1.1 | `fonts/LICENSE-figtree.txt` |
 
 ## Downloaded on first use
