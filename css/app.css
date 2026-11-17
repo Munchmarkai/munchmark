@@ -7,7 +7,7 @@
      and the bright paper colors below are fills only: macro bands, dots, highlights. Text never uses them. */
   --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#EEF3EC; --ink:#16201A; --muted:#55625A; --line:#D6DED2; --stroke:#16201A;
   --accent:#2E7A4D; --accent-ink:#FFFFFF; --brand:#2E7A4D; --brand-ink:#FFFFFF; --protein:#C2283C; --carbs:#9A5B00; --fat:#17689F; --warn:#C2410C; --good:#2E7A4D;
-  --label-bg:#FFFFFF; --label-ink:#111111; --shadow:3px 4px 0 var(--stroke); --paper:#FFF8E8;
+  --label-bg:#FFFFFF; --label-ink:#111111; --shadow:3px 4px 0 var(--stroke); --paper:#FFF8E8; --fridge:#E4F3FC; --tub:#FFFFFF;
   --orange:#FF9F1C; --yellow:#FFD23F; --blue:#4CB5F5; --blue-2:#9AD8FB; --green:#6FD08C; --purple:#B79CFF; --red:#FF6B6B; --pop-ink:#16201A;
   --protein-bg:var(--red); --carbs-bg:var(--yellow); --fat-bg:var(--blue); --other-bg:var(--purple);
   --wob:22px 18px 24px 16px/18px 24px 16px 22px; --wob-sm:13px 10px 14px 9px/10px 14px 9px 13px;
@@ -20,12 +20,12 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#101412; --surface:#181D1A; --surface-2:#232B26; --ink:#EEF3EE; --muted:#9BA89F; --line:#2E3832; --stroke:#EEF3EE;
   --accent:#5DBE84; --accent-ink:#0B1A11; --brand:#1F5C3B; --brand-ink:#F2F7F2; --protein:#FF8F8F; --carbs:#FFD23F; --fat:#74C7F7; --warn:#FF9466; --good:#5DBE84;
-  --label-bg:#F4F4EF; --label-ink:#111111; --shadow:3px 4px 0 #000; --paper:#F6F0DF; color-scheme:dark;
+  --label-bg:#F4F4EF; --label-ink:#111111; --shadow:3px 4px 0 #000; --paper:#F6F0DF; --fridge:#1B2A33; --tub:#26343D; color-scheme:dark;
 }}
 :root[data-theme="dark"]{
   --bg:#101412; --surface:#181D1A; --surface-2:#232B26; --ink:#EEF3EE; --muted:#9BA89F; --line:#2E3832; --stroke:#EEF3EE;
   --accent:#5DBE84; --accent-ink:#0B1A11; --brand:#1F5C3B; --brand-ink:#F2F7F2; --protein:#FF8F8F; --carbs:#FFD23F; --fat:#74C7F7; --warn:#FF9466; --good:#5DBE84;
-  --label-bg:#F4F4EF; --label-ink:#111111; --shadow:3px 4px 0 #000; --paper:#F6F0DF; color-scheme:dark;
+  --label-bg:#F4F4EF; --label-ink:#111111; --shadow:3px 4px 0 #000; --paper:#F6F0DF; --fridge:#1B2A33; --tub:#26343D; color-scheme:dark;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -780,3 +780,95 @@ button.daynav-label svg{width:18px;height:18px;color:var(--accent)}
 .cal-note input:focus,.weeknote:focus{outline:none;border-bottom-color:var(--accent)}
 .weeknote{display:block;font-size:12.5px;margin-top:2px}
 button.daynav-label b span{font-size:inherit;color:inherit}
+/* hand-drawn pictures and the timeline they mark */
+.art{width:100%;height:100%;display:block}
+.tl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.tl-stop{position:relative;display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;padding-bottom:22px}
+.tl-stop::before{content:"";position:absolute;left:25px;top:52px;bottom:0;border-left:3px dashed var(--stroke);opacity:.45}
+.tl-stop:last-child{padding-bottom:0} .tl-stop:last-child::before{display:none}
+.tl-pic{width:52px;height:52px;padding:7px;border-radius:50% 46% 52% 48%;background:var(--paper);border:2px solid var(--stroke);box-shadow:2px 3px 0 var(--stroke)}
+.tl-body{min-width:0;padding-top:4px}
+.tl-body .meal-head b small{font-family:var(--f-body);font-weight:500;font-size:12.5px;color:var(--muted);margin-left:8px}
+.tl-body .entry-row{grid-template-columns:minmax(0,1fr) auto}
+.tl-body .entry-row .thumb{display:none}
+.tl-body .entry:last-child{border-bottom:0}
+.wkl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.wkl-row{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center;text-align:left;background:none;border:0;border-bottom:1.5px dashed var(--line);padding:12px 6px;color:inherit;border-radius:var(--wob-sm)}
+.wkl-row[aria-pressed="true"]{background:var(--surface-2);box-shadow:inset 0 0 0 2px var(--stroke);border-bottom-color:transparent}
+.wkl-top b{display:block;font-weight:700;font-size:15px}
+.wkl-top small{color:var(--muted);font-size:12.5px}
+.wkl-days{display:flex;gap:3px}
+.wkl-days .cal-fill{width:11px;height:26px}
+.wkl-tags{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px}
+.wkl-tags i{font-style:normal;font-family:var(--f-hand);font-weight:700;font-size:13px;color:var(--pop-ink);background:var(--c);border:1.5px solid var(--stroke);border-radius:10px 8px 11px 7px;padding:1px 8px}
+.wkl-note{grid-column:1/-1;font-size:13px;color:var(--muted);font-style:italic}
+/* the fridge: saved meals as containers on shelves and in drawers */
+.fridge{background:var(--fridge);border:3px solid var(--stroke);border-radius:26px 22px 24px 20px/22px 26px 20px 24px;box-shadow:var(--shadow);padding:6px 10px 10px;display:flex;flex-direction:column}
+.fr-shelf{padding:10px 2px 12px;border-bottom:4px solid var(--stroke);display:flex;flex-direction:column;gap:8px}
+.fr-tag{align-self:flex-start;font-family:var(--f-hand);font-weight:700;font-size:13px;background:var(--paper);color:var(--pop-ink);border:1.5px solid var(--stroke);border-radius:9px 7px 10px 6px;padding:0 8px;transform:rotate(-1.5deg)}
+.fr-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;align-items:end}
+.fr-empty{grid-column:1/-1;font-size:13px;color:var(--muted);padding:6px 2px}
+.tub{display:flex;flex-direction:column;background:none;border:0;padding:0;color:inherit;text-align:left;min-width:0}
+.tub-lid{display:block;height:11px;margin:0 -3px;background:var(--c);border:2px solid var(--stroke);border-radius:7px 6px 3px 3px}
+.tub-body{display:flex;flex-direction:column;gap:2px;min-height:62px;padding:6px 7px 7px;background:var(--tub);border:2px solid var(--stroke);border-top:0;border-radius:0 0 11px 9px}
+.tub-body b{font-size:13px;font-weight:650;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.tub-body small{font-size:11px;color:var(--muted);margin-top:auto}
+.tub[aria-pressed="true"] .tub-body{background:var(--c);color:var(--pop-ink)}
+.tub[aria-pressed="true"] .tub-body small{color:var(--pop-ink)}
+.tub[aria-pressed="true"]{transform:translateY(-4px)}
+.fr-drawer{margin-top:10px;padding:8px;background:color-mix(in oklab,var(--fridge) 60%,var(--surface));border:3px solid var(--stroke);border-radius:14px 12px 16px 11px;display:flex;flex-direction:column;gap:8px}
+.fr-dhead{display:grid;grid-template-columns:36px minmax(0,1fr) 36px;align-items:center;gap:8px}
+.fr-handle{display:flex;align-items:baseline;justify-content:center;gap:8px;min-height:26px;padding:2px 10px;background:var(--surface);border:2px solid var(--stroke);border-radius:999px;font-size:13px}
+.fr-handle small{color:var(--muted);font-size:11.5px}
+.fr-arrow{width:36px;height:36px;display:grid;place-items:center;background:var(--surface);border:2px solid var(--stroke);border-radius:var(--wob-sm);color:inherit}
+.fr-arrow svg{width:18px;height:18px} .fr-arrow:disabled{opacity:.3}
+.fr-pick{display:flex;flex-direction:column;gap:3px}
+.fr-pick b{font-family:var(--f-hand);font-weight:800;font-size:20px}
+.fr-pick small{color:var(--muted);font-size:13px}
+.fr-acts{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px;margin-top:8px}
+.pot-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
+.pot{width:170px;height:auto}
+.pot-wrap p{margin:0;font-family:var(--f-hand);font-weight:700;font-size:17px}
+.venue{width:100%;max-width:340px;height:auto;display:block;margin:0 auto}
+.venue-name{font-family:var(--f-hand);font-weight:800;fill:#16201A}
+/* lists that used to be stacks of boxes are plain rows now */
+.idea,.guess,.recbox,.rcard{background:none;border:0;border-radius:0;box-shadow:none;border-bottom:1.5px dashed var(--line);padding:12px 0}
+.guess.added{border-color:var(--accent)}
+.clist,.cilist{padding:0}
+.ccard,.cilist li{border-top:0;border-bottom:1.5px dashed var(--line);padding:12px 0}
+.notice{border:0;border-left:4px solid var(--yellow);border-radius:0;background:none;padding:2px 0 2px 12px}
+.wwfc{background:none;border-radius:0;padding:0}
+.pitems{padding:0}
+/* pantry: smaller scan window until there's a photo, tight chips, a search box over the list */
+#pframe:not(.has-photo){aspect-ratio:auto;min-height:120px;padding:10px 0}
+#pframe:not(.has-photo) .corner{display:none}
+.pgroup{gap:4px}
+.pgroup .chips{gap:5px}
+.pchip{border:1.5px solid var(--stroke);padding:1px 2px 1px 9px;font-size:13px}
+.pchip button{width:22px;height:22px;background:none}
+#pan-list{display:flex;flex-direction:column;gap:10px}
+#pan-filter{width:100%}
+.pan-gm{list-style:none;margin:0;padding:0}
+.pan-gm li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1.5px dashed var(--line)}
+.pan-gm b{display:block;font-weight:650} .pan-gm small{color:var(--muted);font-size:12.5px}
+/* sports: one-line weight class note that opens, weigh-ins and sessions on the same timeline as meals */
+.cut{border-left:5px solid var(--green);padding-left:12px}
+.cut.warn{border-left-color:var(--orange)}
+.cut summary{list-style:none;cursor:pointer;display:block;font-size:14.5px;padding:2px 26px 2px 0;position:relative}
+.cut summary::-webkit-details-marker{display:none}
+.cut summary b{font-family:var(--f-hand);font-weight:800;font-size:19px}
+.cut summary svg{position:absolute;right:0;top:4px;width:20px;height:20px;transition:transform .2s}
+.cut[open] summary svg{transform:rotate(90deg)}
+.cut .sec{margin-top:8px}
+.tl-body.wrow{align-self:center;padding-top:0}
+.tl-stop.todo .tl-pic{opacity:.45;box-shadow:none}
+.sess{display:flex;flex-direction:column;gap:10px}
+.sess .fix-row select{min-width:0}
+.wnotes li{background:none;border-radius:0;padding:8px 0;border-bottom:1.5px dashed var(--line)}
+.class-card{border-left:0}
+.nedit summary{cursor:pointer;font-size:13px;font-weight:650;color:var(--accent)}
+.nedit[open] summary{margin-bottom:6px}
+.nedit-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;margin-top:8px}
+.nedit-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:600}
+.nedit-grid input{padding-block:7px}
+.ai-opt,.recbox .ai-opt{background:none;border:0;border-radius:0;border-bottom:1.5px dashed var(--line);padding:10px 0}

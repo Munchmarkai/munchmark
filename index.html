@@ -177,6 +177,7 @@
       <div class="daynav-label"><b id="wk-title">This week</b><span id="wk-sub"></span></div>
       <button type="button" class="iconbtn" id="wk-next" data-action="wk-next" aria-label="Next week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>
     </div>
+    <div id="wk-list" class="sec"></div>
     <div id="wk-body" class="view"></div>
   </section>
 
@@ -228,16 +229,22 @@
     <div class="sec">
       <div class="field">
         <label for="pan-search">Add foods by name</label>
-        <div class="fix-row"><input type="text" id="pan-search" autocomplete="off" placeholder="chicken, rice, eggs…"><button type="button" class="btn ghost" data-action="pan-barcode">Barcode</button></div>
+        <input type="text" id="pan-search" autocomplete="off" placeholder="chicken, rice, eggs…">
         <ul class="results" id="pan-results"></ul>
+        <div class="row2"><button type="button" class="btn ghost sm" data-action="pan-barcode">Scan a barcode</button><button type="button" class="btn ghost sm" id="pan-gem-btn" data-action="pan-gem">Find with Gemini</button></div>
+        <div id="pan-gem"></div>
       </div>
     </div>
     <div class="sec" id="pan-list-sec">
       <div class="sec-head"><h2 class="h">Your pantry</h2><button type="button" class="linkbtn" data-action="pan-clear" id="pan-clear">Clear all</button></div>
+      <input type="text" id="pan-filter" autocomplete="off" placeholder="Search your pantry" aria-label="Search your pantry">
       <div id="pan-list"></div>
     </div>
     <div class="sec">
-      <div class="sec-head"><h2 class="h">Your goals</h2><button type="button" class="linkbtn" data-action="pan-usebody">Use my Body targets</button></div>
+      <div class="sec-head"><h2 class="h">Meal ideas</h2><span class="sub" id="pan-goal-line"></span></div>
+      <details class="help" id="pan-goals"><summary>Goals and how you eat</summary>
+      <div class="sec">
+      <button type="button" class="linkbtn" data-action="pan-usebody" style="align-self:flex-start;padding:0">Use my Body targets</button>
       <div class="goalgrid">
         <div class="field"><label for="g-kcal">Calories</label><input type="number" id="g-kcal" inputmode="numeric"></div>
         <div class="field"><label for="g-p">Protein g</label><input type="number" id="g-p" inputmode="numeric"></div>
@@ -251,6 +258,7 @@
         <p class="fine">Meals and snacks a day, diets (vegetarian, vegan, keto, low carb, halal…), allergies, foods to skip or use up, sodium or sugar limits, or exact numbers like “2000 calories” or “180 g protein”.</p>
         <div id="diet-sum" class="sec"></div>
       </div>
+      </div></details>
       <div class="row2">
         <button type="button" class="btn primary" data-action="pan-ideas">Meal ideas</button>
         <button type="button" class="btn ghost" data-action="pan-day">Plan my day</button>
