@@ -28,16 +28,31 @@ function levelY(frac){
 // one wobbly surface line, wide enough to slide sideways without showing its ends
 const wave = amp => { let d = `M-80 0`; for (let x = -80; x < 280; x += 20) d += ` q5 ${-amp} 10 0 t10 0`; return d + ' V260 H-80 Z'; };
 const MOUTH = {
-  hungry: 'M120 121 q7 -5 14 0',
-  eating: 'M117 118 q10 9 20 0',
-  full: 'M114 116 q13 15 26 0 z',
-  over: 'M114 121 q4 -6 8 0 t8 0 t8 0',
+  hungry: 'M134 74 q6 -4 12 0',
+  eating: 'M132 71 q8 7 16 0',
+  full: 'M130 70 q10 12 20 0 z',
+  over: 'M130 74 q3.3 -5 6.6 0 t6.6 0 t6.6 0',
 };
+const BOTTOM = 186, FACE = [48, 80];   // lowest point of the bag; rows the face needs to itself
+// left and right edge of the shape on every row, for placing labels
+let EDGES = null;
+function edges(){
+  if (EDGES) return EDGES;
+  EDGES = [];
+  try {
+    const c = document.createElement('canvas'); c.width = 200; c.height = 200;
+    const x = c.getContext('2d'); x.fill(new Path2D(SHAPE));
+    const d = x.getImageData(0, 0, 200, 200).data;
+    for (let y = 0; y < 200; y++) { let l = -1, r = -1; for (let i = 58; i < 200; i++) if (d[(y * 200 + i) * 4 + 3] > 127) { if (l < 0) l = i; r = i; } EDGES.push(l < 0 ? null : [l, r]); }
+  } catch { EDGES = []; }
+  return EDGES;
+}
+const edgeAt = y => edges()[Math.round(y)] || [70, 176];
 
 let uidN = 0;
 export function stomachHTML(){
   const u = 'tm' + (++uidN);
-  return `<svg class="tummy" viewBox="0 0 200 200" role="img" aria-label="Calories eaten today">
+  return `<svg class="tummy" viewBox="0 0 258 200" role="group" aria-label="Calories eaten today">
     <defs>
       <clipPath id="${u}-clip"><path d="${SHAPE}"/></clipPath>
       <filter id="${u}-wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="7" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="4"/></filter>
@@ -45,16 +60,19 @@ export function stomachHTML(){
     <path class="tm-sticker" d="${SHAPE}"/>
     <g clip-path="url(#${u}-clip)">
       <g class="tm-lvl" data-band="other"><path class="tm-band tm-other" d="${wave(3)}"/></g>
-      ${[...MACROS].reverse().map((m, i) => `<g class="tm-lvl" data-band="${m.id}"><path class="tm-band tm-${m.id}" data-action="macro" data-macro="${m.id}" style="animation-delay:${-1.7 * (i + 1)}s" d="${wave(3.5)}"><title>${m.label}</title></path></g>`).join('')}
+      ${[...MACROS].reverse().map((m, i) => `<g class="tm-lvl" data-band="${m.id}"><path class="tm-band tm-${m.id}" data-action="macro" data-macro="${m.id}" style="animation-delay:${-1.7 * (i + 1)}s" d="${wave(3.5)}"/></g>`).join('')}
     </g>
-    <path class="tm-shine" d="M150 58 C162 66 169 80 170 96"/>
+    <path class="tm-shine" d="M173 106 C173 124 167 141 157 153"/>
     <path class="tm-line" d="${SHAPE}" filter="url(#${u}-wob)"/>
     <g class="tm-face">
-      <ellipse class="tm-cheek" cx="103" cy="112" rx="7" ry="4.5"/><ellipse class="tm-cheek" cx="151" cy="112" rx="7" ry="4.5"/>
-      <circle cx="112" cy="100" r="4.6"/><circle cx="142" cy="100" r="4.6"/>
-      <circle class="tm-glint" cx="113.6" cy="98.4" r="1.5"/><circle class="tm-glint" cx="143.6" cy="98.4" r="1.5"/>
+      <ellipse class="tm-cheek" cx="121" cy="69" rx="6" ry="4"/><ellipse class="tm-cheek" cx="159" cy="69" rx="6" ry="4"/>
+      <circle cx="129" cy="59" r="4.2"/><circle cx="151" cy="59" r="4.2"/>
+      <circle class="tm-glint" cx="130.4" cy="57.6" r="1.4"/><circle class="tm-glint" cx="152.4" cy="57.6" r="1.4"/>
       <path class="tm-mouth" d="${MOUTH.hungry}"/>
     </g>
+    ${MACROS.map(m => `<g class="tm-tag m-${m.id}" data-tag="${m.id}" data-action="macro" data-macro="${m.id}" role="button" tabindex="0">
+      <rect class="tm-hit" rx="5"/><path class="tm-lead" d=""/><circle class="tm-pin" r="3.2"/><circle class="tm-key" r="5"/>
+      <text class="tm-t1"></text><text class="tm-t2"></text></g>`).join('')}
   </svg>`;
 }
 
@@ -73,26 +91,46 @@ export function updateStomach(svg, t, goal){
   const mood = frac > 1.05 ? 'over' : frac >= 0.9 ? 'full' : frac >= 0.04 ? 'eating' : 'hungry';
   svg.dataset.mood = mood;
   svg.querySelector('.tm-mouth').setAttribute('d', MOUTH[mood]);
-  svg.setAttribute('aria-label', `${int(cal)} of ${int(g)} calories eaten. ${MACROS.map(m => `${m.label} ${int(num(t[m.k]))} grams`).join(', ')}.`);
-}
+  svg.setAttribute('aria-label', `${int(cal)} of ${int(g)} calories eaten`);
 
-// The three tappable rows beside the stomach. g: targets() from app.js (protein is a range).
-export function macroRowsHTML(t, g){
-  return MACROS.map(m => {
-    const v = num(t[m.k]);
-    let goalTxt, pct, tag = '', range = '';
-    if (m.id === 'protein') {
-      const lo = num(g.protein_lo), hi = num(g.protein_hi) || 1;
-      goalTxt = `${int(lo)}–${int(hi)} g`; pct = v / hi * 100;
-      tag = v > hi ? ' <em class="hi">above range</em>' : v >= lo ? ' <em class="ok">in range</em>' : '';
-      range = ` range" style="--lo:${lo / hi * 100}%`;
-    } else { goalTxt = `${int(num(g[m.k]))} g`; pct = v / (num(g[m.k]) || 1) * 100; }
-    return `<button type="button" class="mrow m-${m.id}" data-action="macro" data-macro="${m.id}" aria-label="${m.label}: ${int(v)} of ${goalTxt}. See what added to it">
-      <span class="mrow-top tnum"><b><i class="mdot"></i>${m.label}${tag}</b><span>${int(v)} / ${goalTxt}</span></span>
-      <span class="bar${range}"><i style="width:${Math.min(100, pct)}%"></i></span>
-    </button>`;
-  }).join('');
+  // Grams go inside each color when its band is tall and wide enough; otherwise they branch off to the side.
+  let floor = BOTTOM; const out = [];
+  MACROS.forEach(m => {
+    const v = num(t[m.k]), top = Math.min(tops[m.id], BOTTOM), bot = floor; floor = top;
+    const text = `${m.label} ${int(v)} g`, need = text.length * 5.8 + 8;
+    const tag = svg.querySelector(`[data-tag="${m.id}"]`);
+    tag.setAttribute('aria-label', `${text}. See what added to it`);
+    let y = (top + bot) / 2, inside = v >= 0.5 && bot - top >= 16;
+    if (inside && y > FACE[0] && y < FACE[1]) { if (bot - FACE[1] >= 13) y = (FACE[1] + bot) / 2; else if (FACE[0] - top >= 13) y = (top + FACE[0]) / 2; else inside = false; }
+    // the label has to clear the outline along its whole height, not just its middle
+    const rows = [edgeAt(y - 7), edgeAt(y), edgeAt(y + 5)], l = Math.max(...rows.map(e => e[0])) + 4, r = Math.min(...rows.map(e => e[1])) - 4;
+    if (inside && r - l < need) inside = false;
+    const t1 = tag.querySelector('.tm-t1'), t2 = tag.querySelector('.tm-t2'), hit = tag.querySelector('.tm-hit');
+    const box = (x, y, w, h) => { hit.setAttribute('x', x); hit.setAttribute('y', y); hit.setAttribute('width', w); hit.setAttribute('height', h); };
+    tag.classList.toggle('in', inside);
+    if (inside) {
+      t1.textContent = text; t2.textContent = '';
+      t1.setAttribute('x', (l + r) / 2); t1.setAttribute('y', y + 4); box((l + r - need) / 2, y - 9, need, 18);
+    } else out.push({m, v, tag, t1, t2, box, has: v >= 0.5 && bot - top > 0.5, ay: (top + bot) / 2});
+  });
+  // side labels: keep the order of the bands (protein lowest) and at least a label's height apart
+  out.reverse(); const GAP = 27, LO = 30, HI = 182;
+  out.forEach((o, i) => { o.y = Math.max(o.has ? o.ay : HI, i ? out[i - 1].y + GAP : LO); });
+  for (let i = out.length - 1; i >= 0; i--) o_fix(out, i, GAP, HI);
+  // lines that start close together fan out without crossing: the higher label takes the pin further left
+  out.forEach(o => { o.ax = edgeAt(o.ay)[1] - 6; });
+  for (let i = out.length - 2; i >= 0; i--) if (out[i].has && out[i + 1].has && Math.abs(out[i].ay - out[i + 1].ay) < 12) out[i].ax = Math.min(out[i].ax, out[i + 1].ax - 11);
+  out.forEach(o => {
+    const ax = o.ax;
+    o.tag.querySelector('.tm-lead').setAttribute('d', o.has ? `M${ax} ${o.ay} L196 ${o.y - 4} H203` : '');
+    const pin = o.tag.querySelector('.tm-pin'); pin.setAttribute('cx', ax); pin.setAttribute('cy', o.ay); pin.style.display = o.has ? '' : 'none';
+    const key = o.tag.querySelector('.tm-key'); key.setAttribute('cx', 211); key.setAttribute('cy', o.y - 8);
+    o.t1.textContent = o.m.label; o.t1.setAttribute('x', 220); o.t1.setAttribute('y', o.y - 4);
+    o.box(203, o.y - 17, 55, 30);
+    o.t2.textContent = `${int(o.v)} g`; o.t2.setAttribute('x', 220); o.t2.setAttribute('y', o.y + 9);
+  });
 }
+function o_fix(out, i, gap, hi){ const max = i === out.length - 1 ? hi : out[i + 1].y - gap; if (out[i].y > max) out[i].y = max; }
 
 // The page behind a color. rows: [{entryId, name, sub, grams}] for the chosen macro, any order.
 export function macroPageHTML({macro, t, g, rows, dayLabel}){

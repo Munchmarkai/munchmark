@@ -3,7 +3,7 @@ import { LABELS, PANTRY } from './labels.js';
 import { mealIdeas, dayPlan, scaleT, roleOf } from './planner.js';
 import { summarize, weekStart, addDays, SPORTS } from './week.js';
 import { playWrapped } from './wrapped.js';
-import { MACRO_BY, stomachHTML, updateStomach, macroRowsHTML, macroPageHTML } from './tummy.js';
+import { MACRO_BY, stomachHTML, updateStomach, macroPageHTML } from './tummy.js';
 import { parseMeal, labelByName, parseIngredients, parseSegment, splitMeal, gramsFromMeasure } from './parse.js';
 import * as store from './store.js';
 import { offP100, getProduct, displayName } from './off.js';
@@ -251,7 +251,6 @@ function renderToday(){
   $('#kcal-left-lbl').classList.toggle('over', left < 0);
   $('#kcal-eaten').textContent = int(t.calories);
   $('#kcal-goal').textContent = int(g.calories);
-  $('#macros').innerHTML = macroRowsHTML(t, g);
   const keys = Array.from({length:7}, (_, i) => shift(date, i - 6));
   const vals = keys.map(k => dayTotals(k).calories);
   const top = Math.max(g.calories * 1.15, ...vals.map(v => v * 1.05), 1);
@@ -2712,6 +2711,8 @@ let toastT;
 function toast(msg){ const el = $('#toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => el.hidden = true, 2600); }
 
 /* ---------- events ---------- */
+// drawn buttons (the labels on the stomach) work from the keyboard like real ones
+document.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('svg [role="button"]')) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent('click', {bubbles:true})); } });
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-action]'); if (!b) return;
   const a = b.dataset.action;
