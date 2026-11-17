@@ -872,3 +872,5 @@ button.daynav-label b span{font-size:inherit;color:inherit}
 .nedit-grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;font-weight:600}
 .nedit-grid input{padding-block:7px}
 .ai-opt,.recbox .ai-opt{background:none;border:0;border-radius:0;border-bottom:1.5px dashed var(--line);padding:10px 0}
+/* keys are hidden like a password without being a password field, so the browser doesn't offer to save one */
+.secret{-webkit-text-security:disc}

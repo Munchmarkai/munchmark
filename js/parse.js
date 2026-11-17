@@ -77,7 +77,22 @@ export function gramsFromMeasure(f, unit){
 const RAW = {'white rice': [20044, 0.33], 'rice': [20044, 0.33], 'brown rice': [20036, 0.33], 'pasta': [20120, 0.4], 'oatmeal': [8120, 0.35], 'quinoa': [20035, 0.35],
   'ground beef': [23572, 1.33], 'grilled chicken breast': [5062, 1.33], 'chicken breast': [5062, 1.33], 'chicken with rice': null, 'steak': [23584, 1.3], 'salmon': [15236, 1.25],
   'baked potato': [11352, 1], 'sweet potato': [11507, 1], 'broccoli': [11090, 1], 'green beans': [11052, 1], 'pork chop': [10024, 1.3], 'turkey': [5305, 1.33]};
+// Salt and pepper have no calories to speak of, but salt is most of a home-cooked meal's sodium, so they count.
+// Read here because the general matcher gets them wrong ("pepper" finds bell peppers, a pinch comes out as a teaspoon).
+const SALT_NDB = 2047, PEPPER_NDB = 2030, TSP_G = {salt: 6, pepper: 2.3};
+function seasoning(seg, foodsById){
+  const m = String(seg).trim().toLowerCase().replace(/\s+/g, ' ').match(/^(?:a\s+|an\s+)?([\d\s\/.½¼¾⅓⅔⅛]+)?\s*(tsp|teaspoons?|tbsp|tablespoons?|pinch(?:es)?|dash(?:es)?|g|grams?)?\.?\s*(?:of\s+)?((?:table |kosher |sea |iodized |fine |coarse )*salt|(?:freshly |fresh |ground |cracked |black )*pepper|salt (?:and|&) (?:black )?pepper)$/);
+  if (!m || !foodsById.get(SALT_NDB) || !foodsById.get(PEPPER_NDB)) return null;
+  const qty = m[1] ? parseQty(m[1].trim() + ' x')[0] || 1 : 1, unit = m[2] || '', both = /salt (and|&)/.test(m[3]);
+  // teaspoons of the stuff; with no amount written, a light hand: a quarter teaspoon of salt, an eighth of pepper
+  const tsp = kind => /^g/.test(unit) ? qty / TSP_G[kind] : /^tb|^tablespoon/.test(unit) ? qty * 3 : /^pinch/.test(unit) ? qty / 16 : /^dash/.test(unit) ? qty / 8 : unit ? qty : m[1] ? qty : kind === 'salt' ? 0.25 : 0.125;
+  const part = kind => ({ndb: kind === 'salt' ? SALT_NDB : PEPPER_NDB, g: Math.round(tsp(kind) * TSP_G[kind] * 100) / 100});
+  const kinds = both ? ['salt', 'pepper'] : [/salt/.test(m[3]) ? 'salt' : 'pepper'];
+  const amount = unit || m[1] ? `${m[1] ? m[1].trim() + ' ' : ''}${unit || 'tsp'}` : 'to taste, about ' + (kinds[0] === 'salt' ? '¼ tsp' : '⅛ tsp');
+  return {text: seg, label: null, name: both ? 'Salt and pepper' : kinds[0] === 'salt' ? 'Salt' : 'Black pepper', items: kinds.map(part), portion: amount};
+}
 export function parseSegment(seg, index, foodsById, opts = {}){
+  const sz = seasoning(seg, foodsById); if (sz) return sz;
   let [qty, rest] = parseQty(seg);
   rest = rest.trim().replace(/^of\s+/i, '');
   let unit = null, grams = null;
@@ -194,7 +209,7 @@ export function parseIngredients(text, index, foodsById){
     line = line.replace(/\b(frozen|sweet|canned|whole kernel)\s+corn\b/i, 'corn kernels').replace(/\b(fresh|frozen|boneless|skinless|extra[- ]virgin|lean)\s+/gi, '').replace(/\s+/g, ' ');
     // amounts are read as raw/dry already, so these words only get in the way of matching
     line = line.replace(/\b(dry|dried|uncooked|raw)\s+(?=(white |brown |jasmine |basmati |long[- ]grain )?(rice|pasta|spaghetti|penne|macaroni|noodles|oats|quinoa|lentils|beans))/i, '').trim();
-    if (/^(salt|pepper|salt and pepper|salt & pepper|black pepper|kosher salt|sea salt|seasoning|spices?|cooking spray|ice)$/i.test(line.replace(/^[\d\s\/.½¼¾]+(tsp|teaspoons?|tbsp|tablespoons?|pinch|dash|pinches)?\.?\s*(of\s+)?/i, ''))) { out.push({text: line, skip: 'seasoning'}); continue; }
+    if (/^(seasoning|spices?|cooking spray|ice)$/i.test(line.replace(/^[\d\s\/.½¼¾]+(tsp|teaspoons?|tbsp|tablespoons?|pinch|dash|pinches)?\.?\s*(of\s+)?/i, ''))) { out.push({text: line, skip: 'seasoning'}); continue; }
     const wm = line.match(/^([\d\s\/.½¼¾]+)?\s*(cups?|c|ml|l|liters?|oz|fl oz|quarts?|qt)?\s*(of\s+)?(cold |warm |hot |boiling )?water\b/i);
     if (wm) {
       const [q] = (wm[1] || '1').trim().split(/\s+/).map(x => x.includes('/') ? x.split('/').reduce((a, b) => a / b) : ({'½': 0.5, '¼': 0.25, '¾': 0.75}[x] ?? Number(x)));

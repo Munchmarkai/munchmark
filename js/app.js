@@ -1567,13 +1567,13 @@ function renderRecipeEdit(el){
     <div class="pot-wrap">${potSVG()}<p>${e.items.length ? `${e.items.length} thing${e.items.length === 1 ? '' : 's'} in the pot` : 'What’s going in the pot?'}</p></div>
     <div class="field"><label for="r-name">Name</label><input type="text" id="r-name" maxlength="60" value="${esc(e.name)}" placeholder="e.g. Turkey chili"></div>
     <div class="card sec"><h3 class="h">Ingredients</h3>
-      <p class="fine">Snap the ingredient list from a recipe card, cookbook or screen, or type it, one per line. Amounts count as raw or dry unless the line says cooked or canned.</p>
+      <p class="fine">Snap the ingredient list from a recipe card, cookbook or screen, or type it, one per line. Amounts count as raw or dry unless the line says cooked or canned. Salt, soy sauce, baking soda and spices count too: they add sodium and minerals even with no calories.</p>
       <div class="row2"><button type="button" class="btn primary" data-action="r-photo" data-cam="1">${CAM_SVG}Photo of list</button><button type="button" class="btn ghost" data-action="r-photo">From gallery</button></div>
       ${e.ocr ? `<div class="recbox"><span><span class="spin"></span> <b id="r-ocr-step">${esc(e.ocr.step || 'Reading the list…')}</b></span></div>` : ''}
       ${m && m.err ? `<p class="err">${esc(m.err)}</p>` : ''}
       ${m && !m.err ? `<p class="notice">${m.added ? `Added ${m.added} ingredient${m.added === 1 ? '' : 's'}${m.fromPhoto ? ' from the photo. Check each one below, especially amounts.' : '.'}` : 'Nothing new added.'}
         ${m.missing.length ? `<br><b>Couldn’t match:</b> ${esc(m.missing.join('; '))}. Search for ${m.missing.length === 1 ? 'it' : 'them'} below.` : ''}
-        ${m.skipped.length ? `<br>Skipped (no real calories): ${esc(m.skipped.join(', '))}.` : ''}</p>` : ''}
+        ${m.skipped.length ? `<br>Skipped (too vague to count; name the seasoning to add it): ${esc(m.skipped.join(', '))}.` : ''}</p>` : ''}
       ${e.ocrText ? `<details class="help"><summary>Text read from the photo</summary><pre class="ocrtext">${esc(e.ocrText)}</pre></details>` : ''}
       <div class="field"><label for="r-text">Type or paste ingredients</label><textarea id="r-text" placeholder="2 lb ground turkey&#10;1 can black beans&#10;1 cup dry rice&#10;2 cups water&#10;1 onion">${esc(e.text)}</textarea></div>
       <div class="row2"><button type="button" class="btn ghost" data-action="r-parse">Add these</button><button type="button" class="btn ghost" data-action="r-gem" ${e.gm ? 'disabled' : ''}>${e.gm ? '<span class="spin"></span> Asking Gemini…' : 'Find with Gemini'}</button></div>

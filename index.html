@@ -371,14 +371,14 @@
         </div>
         <div id="plus-box" class="plus-box" hidden>
           <label for="set-plus">Plus license key or free code</label>
-          <div class="fix-row"><input type="password" id="set-plus" autocomplete="off" spellcheck="false" placeholder="License key from your receipt email, or a code"><button type="button" class="btn primary sm" data-action="plus-check">Activate</button></div>
+          <div class="fix-row"><input type="text" class="secret" id="set-plus" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="License key from your receipt email, or a code"><button type="button" class="btn primary sm" data-action="plus-check">Activate</button></div>
           <p class="fine" id="plus-status" aria-live="polite"></p>
           <p class="fine" id="plus-buy"></p>
           <p class="fine">Activating confirms you’re 18 or older and agree that photos, menus and typed foods you ask about go to Google Gemini through Munchmark’s server. On Plus, Google’s paid tier doesn’t use them to improve its products. <a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a> · <a href="terms.html" target="_blank" rel="noopener">Terms</a></p>
         </div>
         <details class="help"><summary>Advanced: use your own Gemini API key</summary>
           <label for="set-gem">Your Gemini API key</label>
-          <div class="fix-row"><input type="password" id="set-gem" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
+          <div class="fix-row"><input type="text" class="secret" id="set-gem" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" placeholder="Paste your key from AI Studio"><button type="button" class="btn ghost sm" data-action="gem-test">Test</button></div>
           <p class="fine" id="gem-status" aria-live="polite"></p>
           <p class="fine">Instead of Plus, you can use your own key from <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. Requests then go straight from this phone to Google under your own Google account’s terms; on Google’s free tier Google may use them to improve its products, and people may review them. Google’s terms require you to be 18 or older. The key stays on this phone and isn’t put in backups.</p>
         </details></div>
