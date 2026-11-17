@@ -8,7 +8,7 @@
   --bg:#FFFFFF; --surface:#FFFFFF; --surface-2:#EEF3EC; --ink:#16201A; --muted:#55625A; --line:#D6DED2; --stroke:#16201A;
   --accent:#2E7A4D; --accent-ink:#FFFFFF; --brand:#2E7A4D; --brand-ink:#FFFFFF; --protein:#C2283C; --carbs:#9A5B00; --fat:#17689F; --warn:#C2410C; --good:#2E7A4D;
   --label-bg:#FFFFFF; --label-ink:#111111; --shadow:3px 4px 0 var(--stroke); --paper:#FFF8E8;
-  --orange:#FF9F1C; --yellow:#FFD23F; --blue:#4CB5F5; --green:#6FD08C; --purple:#B79CFF; --red:#FF6B6B; --pop-ink:#16201A;
+  --orange:#FF9F1C; --yellow:#FFD23F; --blue:#4CB5F5; --blue-2:#9AD8FB; --green:#6FD08C; --purple:#B79CFF; --red:#FF6B6B; --pop-ink:#16201A;
   --protein-bg:var(--red); --carbs-bg:var(--yellow); --fat-bg:var(--blue); --other-bg:var(--purple);
   --wob:22px 18px 24px 16px/18px 24px 16px 22px; --wob-sm:13px 10px 14px 9px/10px 14px 9px 13px;
   --f-display:"Shantell Sans","Archivo","Comic Sans MS",system-ui,sans-serif;
@@ -88,6 +88,18 @@ button{cursor:pointer}
 .tm-lead{fill:none;stroke:var(--ink);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .tm-pin{fill:var(--ink)}
 .tm-hit{fill:transparent}
+/* water glass: same drawing language as the stomach, one layer per drink */
+.gl-w0{fill:var(--blue)} .gl-w1{fill:var(--blue-2)}
+.gl-straw{fill:none;stroke:var(--red);stroke-width:7;stroke-linecap:round}
+.gl-over{fill:var(--blue);stroke:#16201A;stroke-width:3;stroke-linejoin:round;display:none}
+.glass.over .gl-over{display:block}
+.glass .tm-shine{opacity:.6}
+.gl-in{font-size:10.5px;font-weight:800;text-anchor:middle;fill:#16201A !important}
+.gl-tag .tm-t2{font-size:11px}
+.gl-tag .tm-t1{font-size:8.5px;font-weight:600}
+.gl-tag.sel text{fill:var(--warn) !important}
+.gl-tag.sel .gl-in{fill:#8A1C0B !important}
+.kcal-lbl.good{color:var(--good)}
 .tm-key{fill:var(--c);stroke:var(--stroke);stroke-width:1.5}
 .tm-tag.in text{fill:#16201A;text-anchor:middle}
 .tm-tag.in .tm-t1{font-size:11.5px;font-weight:800}

@@ -4,6 +4,7 @@ import { mealIdeas, dayPlan, scaleT, roleOf } from './planner.js';
 import { summarize, weekStart, addDays, SPORTS } from './week.js';
 import { playWrapped } from './wrapped.js';
 import { MACRO_BY, stomachHTML, updateStomach, macroPageHTML } from './tummy.js';
+import { glassHTML, updateGlass } from './glass.js';
 import { parseMeal, labelByName, parseIngredients, parseSegment, splitMeal, gramsFromMeasure } from './parse.js';
 import * as store from './store.js';
 import { offP100, getProduct, displayName } from './off.js';
@@ -1154,7 +1155,7 @@ function addWater(oz, opts = {}){
   const date = opts.date || S.viewDate;
   oz = Math.round(oz * 10) / 10;
   if (!(oz > 0 && oz < 400)) { toast('Enter an amount in ounces'); return false; }
-  const d = dayOf(date); (d.water ||= []).push({t:new Date().toISOString(), oz, ...(opts.src ? {src:opts.src} : {})});
+  const d = dayOf(date); S.wSel = null; (d.water ||= []).push({t:new Date().toISOString(), oz, ...(opts.src ? {src:opts.src} : {})});
   saveDay(date); store.persist();
   if (S.tab === 'today') { renderWater(); renderWaterWeight(); }
   toast(`Logged ${dec(oz)} oz of water${opts.src ? ' · ' + opts.src : ''}`);
@@ -1170,15 +1171,22 @@ function renderWater(){
   const foodOz = dayTotals(date).water_g / OZ_ML;
   const list = day?.water || [], last = list[list.length - 1];
   const bottles = containers('bottle');
+  const over = drank - g.goal, glass = el.querySelector('.glass');   // the same drawing is kept between renders so a new drink pours in
   el.innerHTML = `<div class="sec-head"><h2 class="h">Water</h2><span class="sub tnum">goal ${int(g.goal)} oz${g.extra ? ` · +${int(g.extra)} for practice` : ''}</span></div>
-    <div class="water-top"><div class="stat-big"><b class="tnum">${dec(drank)}</b><span class="sub">of ${int(g.goal)} oz${drank >= g.goal ? ' · goal hit' : ''}</span></div>
-      <button type="button" class="btn ghost sm" data-action="wb-snap">${CAM_SVG}Snap bottle</button></div>
-    <div class="bar wbar"><i style="width:${Math.min(100, drank / g.goal * 100)}%"></i></div>
+    <div class="tum-sum">
+      <p class="kcal-line"><b class="kcal-big tnum">${dec(drank)}</b><span class="kcal-lbl${over > 0.05 ? ' good' : ''}">${over > 0.05 ? `oz · ${dec(over)} past your goal` : over > -0.05 ? 'oz · goal hit' : `of ${int(g.goal)} oz`}</span></p>
+      <div id="glass"></div>
+      <p class="tap-hint">${list.length ? 'Each layer is one drink. Tap one to remove it.' : 'Nothing yet. Each drink you add pours in as its own layer.'}</p>
+    </div>
+    <div class="water-top"><span class="lbl">Add a drink</span><button type="button" class="btn ghost sm" data-action="wb-snap">${CAM_SVG}Snap bottle</button></div>
     ${bottles.length ? `<div class="chips">${bottles.map(c => `<button type="button" class="chip bottle" data-action="wb-full" data-id="${esc(c.id)}">${c.photos?.[0] ? `<img src="${esc(c.photos[0])}" alt="">` : ''}+ ${esc(c.name)} · ${dec(c.capOz)} oz</button>`).join('')}</div>` : ''}
     <div class="chips">${[8, 12, 16, 20, 32].map(oz => `<button type="button" class="chip" data-action="water-add" data-oz="${oz}">+${oz} oz</button>`).join('')}</div>
     <div class="fix-row"><div class="unit"><input type="number" id="water-custom" inputmode="decimal" min="0" step="any" placeholder="Other amount" aria-label="Other amount in ounces"><em>oz</em></div><button type="button" class="btn ghost sm" data-action="water-custom">Add</button></div>
     ${wbPanelHTML()}
     <p class="fine">${last ? `Last: ${dec(last.oz)} oz at ${esc(timeOf(last.t))}${last.src ? ' (' + esc(last.src) + ')' : ''} · <button type="button" class="linkbtn" data-action="water-undo">Undo</button><br>` : ''}Goal is half your body weight in ounces, plus extra on practice days. Food added about ${int(foodOz)} oz of water on top.${bottles.length ? '' : ' Save your bottles under Meals → Containers to log one with a photo or one tap.'}</p>`;
+  const slot = el.querySelector('#glass');
+  if (glass) slot.append(glass); else slot.innerHTML = glassHTML();
+  updateGlass(slot.firstElementChild, list.map((x, i) => ({oz:x.oz, time:timeOf(x.t), sel:S.wSel === date + ':' + i})), g.goal);
 }
 // bottle photo: which saved bottle is it, how full, or weigh it
 function wbPanelHTML(){
@@ -2866,8 +2874,11 @@ document.addEventListener('click', e => {
     case 'eo-log': { const c = S.eo.sg?.[b.dataset.list]?.[Number(b.dataset.i)]; if (c) logCombo(c); break; }
     /* water */
     case 'water-add': addWater(Number(b.dataset.oz)); break;
+    case 'water-entry': { const d = S.days[S.viewDate], i = Number(b.dataset.i), key = S.viewDate + ':' + i; if (!d?.water?.[i]) break;
+      if (S.wSel === key) { const [x] = d.water.splice(i, 1); S.wSel = null; saveDay(S.viewDate); renderWater(); renderWaterWeight(); toast(`Removed ${dec(x.oz)} oz`); }
+      else { S.wSel = key; renderWater(); toast(`${dec(d.water[i].oz)} oz at ${timeOf(d.water[i].t)}. Tap it again to remove`); } break; }
     case 'water-custom': { const v = num($('#water-custom').value); if (v) addWater(v); else $('#water-custom').focus(); break; }
-    case 'water-undo': { const d = S.days[S.viewDate]; if (d?.water?.length) { const x = d.water.pop(); saveDay(S.viewDate); renderWater(); renderWaterWeight(); toast(`Removed ${dec(x.oz)} oz`); } break; }
+    case 'water-undo': { const d = S.days[S.viewDate]; if (d?.water?.length) { S.wSel = null; const x = d.water.pop(); saveDay(S.viewDate); renderWater(); renderWaterWeight(); toast(`Removed ${dec(x.oz)} oz`); } break; }
     case 'wb-snap': pickImage(f => snapBottle(f), true); break;
     case 'wb-full': { const c = S.containers.find(x => x.id === b.dataset.id); if (c) addWater(c.capOz, {src:c.name}); break; }
     case 'wb-pick': S.wb.pick = b.dataset.id; S.wb.scaleOz = null; renderWater(); break;
