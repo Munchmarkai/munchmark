@@ -103,8 +103,10 @@ export function updateStomach(svg, t, goal){
     let y = (top + bot) / 2, inside = v >= 0.5 && bot - top >= 16;
     if (inside && y > FACE[0] && y < FACE[1]) { if (bot - FACE[1] >= 13) y = (FACE[1] + bot) / 2; else if (FACE[0] - top >= 13) y = (top + FACE[0]) / 2; else inside = false; }
     // the label has to clear the outline along its whole height, not just its middle
-    const rows = [edgeAt(y - 7), edgeAt(y), edgeAt(y + 5)], l = Math.max(...rows.map(e => e[0])) + 4, r = Math.min(...rows.map(e => e[1])) - 4;
-    if (inside && r - l < need) inside = false;
+    const span = yy => { const rows = [edgeAt(yy - 7), edgeAt(yy), edgeAt(yy + 5)]; return [Math.max(...rows.map(e => e[0])) + 4, Math.min(...rows.map(e => e[1])) - 4]; };
+    let [l, r] = span(y);
+    // the bag narrows at the bottom: if the middle of the band is too tight, try just under its surface
+    if (inside && r - l < need) { const y2 = top + 11; const [l2, r2] = span(y2); if (r2 - l2 >= need && !(y2 > FACE[0] && y2 < FACE[1] + 4)) { y = y2; l = l2; r = r2; } else inside = false; }
     const t1 = tag.querySelector('.tm-t1'), t2 = tag.querySelector('.tm-t2'), hit = tag.querySelector('.tm-hit');
     const box = (x, y, w, h) => { hit.setAttribute('x', x); hit.setAttribute('y', y); hit.setAttribute('width', w); hit.setAttribute('height', h); };
     tag.classList.toggle('in', inside);
