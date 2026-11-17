@@ -1302,6 +1302,44 @@ async function matchContainers(blob, kind, onStep = () => {}){
 }
 
 /* ---------- water weight (bloat) estimate ---------- */
+function scaleSVG(text){
+  const toes = (x, flip) => [0, 1, 2, 3, 4].map(i => `<circle class="sc-foot" cx="${x + flip * (i * 6.2 - 12.4)}" cy="${101 + Math.abs(i - 1.2) * 2.6}" r="${3.6 - i * 0.35}"/>`).join('');
+  return `<svg class="tummy scale" viewBox="0 0 258 200" aria-hidden="true">
+    <defs><filter id="sc-wob" x="-10%" y="-10%" width="120%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="3.5"/></filter></defs>
+    <rect class="sc-back" x="50" y="14" width="158" height="176" rx="30"/>
+    <rect class="sc-body" x="50" y="14" width="158" height="176" rx="30" filter="url(#sc-wob)"/>
+    <path class="sc-shine" d="M64 46 Q64 30 80 28"/>
+    <rect class="sc-screen" x="80" y="30" width="98" height="46" rx="11"/>
+    <text class="sc-num" x="${text.length > 4 ? 120 : 126}" y="64">${esc(text)}</text><text class="sc-unit" x="${text.length > 4 ? 165 : 160}" y="64">lb</text>
+    <path class="sc-foot" d="M90 112 C100 106 112 110 112 128 C112 150 108 176 98 176 C88 176 82 150 82 130 C82 120 84 115 90 112 Z"/>
+    <path class="sc-foot" d="M168 112 C158 106 146 110 146 128 C146 150 150 176 160 176 C170 176 176 150 176 130 C176 120 174 115 168 112 Z"/>
+    ${toes(98, 1)}${toes(160, -1)}
+    <path class="sc-grip" d="M90 140 h14 M90 150 h13 M154 140 h14 M155 150 h13"/>
+  </svg>`;
+}
+// one or two plain sentences on why a factor moved the estimate: what was eaten or done, and how that holds or sheds water
+function wwWhy(k, v, est, isToday){
+  const Y = est.yday || {}, B = est.base || {}, T = est.today || {}, day = isToday ? 'Yesterday' : 'The day before', up = v > 0;
+  const vs = (now, usual, unit) => `${int(now)} ${unit}, ${now >= usual ? int(now - usual) + ' more' : int(usual - now) + ' less'} than your usual ${int(usual)}`;
+  // each factor blends two days, so the day before last can outweigh yesterday; say so when the sign disagrees
+  const carry = delta => (delta >= 0) === up ? '' : ` The day before that still counts for part of it, which is why this lands on the ${up ? 'plus' : 'minus'} side.`;
+  if (!Y.logged && ['sodium', 'carbs', 'gut'].includes(k)) return `${day} has no food logged, so this reads as far below your usual. Log that day and it corrects itself.`;
+  switch (k) {
+    case 'sodium': return `${day} you ate ${vs(Y.sodium, B.sodium, 'mg of sodium')}. Your body keeps extra water to dilute salt until your kidneys clear it, which takes about a day.${carry(Y.sodium - B.sodium)}`;
+    case 'carbs': return `${day} you ate ${vs(Y.carbs, B.carbs, 'g of carbs')}. Muscles and liver store carbs as glycogen, and every gram stored brings about 3 g of water with it${Y.load > (B.load || 0) ? '; a harder practice than usual burned some of that back off' : ''}.${carry(Y.carbs - B.carbs)}`;
+    case 'gut': return `${day} you ate about ${dec(Y.mass / 453.6)} lb of food and drink against your usual ${dec(B.mass / 453.6)}, with ${int(Y.fiber)} g of fiber. Food still moving through you sits on the scale until it passes${Y.poop != null ? ', and bathroom trips are counted too' : ''}.${carry(Y.mass - B.mass)}`;
+    case 'hydration': {
+      const bits = [];
+      if (T.urine != null) bits.push(T.urine > 3 ? 'darker pee at your check-in points to less water on board' : T.urine < 3 ? 'pale pee at your check-in points to plenty of water on board' : 'pee color at your check-in looks normal');
+      if (Y.pre && Y.post && Y.pre > Y.post) bits.push(`you lost ${dec(Y.pre - Y.post)} lb in sweat at practice and some of it is still missing`);
+      if (Y.alcohol > 0) bits.push('alcohol makes you pee out more than you drank');
+      return bits.length ? cap(bits.join('; ')) + '.' : 'From pee color, sweat you haven’t drunk back, and alcohol.';
+    }
+    case 'sleep': return `You slept ${dec(T.sleep)} hours. Short sleep raises stress hormones that tell your body to hold on to water.`;
+    case 'cycle': return `Cycle day ${est.cycleDay}. Hormones in the week before a period hold extra water, and it eases off once the period starts.`;
+  }
+  return '';
+}
 function renderWaterWeight(){
   const el = $('#ww-card'); if (!el) return;
   const date = S.viewDate, day = S.days[date] || {}, T = totalsMemo();
@@ -1321,12 +1359,20 @@ function renderWaterWeight(){
   if (!est.calibration) tips.push(`${Math.max(0, 10 - weighDays)} more morning weigh-ins and it learns how strongly your body reacts to each factor.`);
   const eatenShare = T(date).calories / (targets().calories || 2000), lateDay = new Date().getHours() >= 19;
   const fc = isToday && est.forecast && (eatenShare >= 0.5 || lateDay) ? est.forecast : null, flab = fc && bloatLabel(fc.total);
+  // the number a scale would show: the person's usual weight plus today's water swing
+  const usual = est.trend || num(S.profile.weightLb) || null, usualFrom = est.trend ? 'smoothed from your morning weigh-ins' : 'the weight saved in Body';
+  const shown = usual ? lb1(usual + est.total) : sgn(est.total);
   el.innerHTML = `<div class="sec-head"><h2 class="h">Water weight</h2><span class="sub">rough estimate</span></div>
-    <div class="stat-big"><b class="tnum">${sgn(est.total)}</b><span class="sub">lb ${isToday ? 'this' : 'that'} morning vs your normal</span><span class="pill ww-${lab.tone}">${lab.label}</span></div>
-    ${comps.length ? `<ul class="ww-comps">${comps.map(([k, v]) => `<li><span>${esc(COMPONENT_LABEL[k] || k)}</span><span class="ww-bar"><i class="${v < 0 ? 'neg' : 'pos'}" style="width:${Math.abs(v) / mx * 50}%"></i></span><b class="tnum">${sgn(v)}</b></li>`).join('')}</ul>` : '<p class="fine">Nothing unusual today: food, drinks and training look like your normal week.</p>'}
+    <div class="tum-sum">
+      <button type="button" class="scale-btn" data-action="ww-why" aria-expanded="${!!S.wwOpen}" aria-label="Estimated scale reading ${shown} pounds. ${S.wwOpen ? 'Hide' : 'Show'} what is behind it">${scaleSVG(shown)}</button>
+      <p class="scale-line tnum"><span class="pill ww-${lab.tone}">${lab.label}</span><span>${usual ? `${sgn(est.total)} lb of water on your usual ${lb1(usual)}` : `lb of water ${isToday ? 'this' : 'that'} morning vs your normal`}</span></p>
+      <p class="tap-hint">${S.wwOpen ? 'Tap the scale to hide this.' : usual ? 'What the scale would likely show this morning. Tap it to see why.' : 'Save your weight in Body to see a full scale number. Tap the scale to see why.'}</p>
+    </div>
+    ${S.wwOpen ? `${usual ? `<p class="ww-start tnum">It starts from your usual <b>${lb1(usual)} lb</b> (${usualFrom}), then adds or takes off water for each of these:</p>` : ''}
+      ${comps.length ? `<ul class="ww-why">${comps.map(([k, v]) => `<li><b>${esc(COMPONENT_LABEL[k] || k)}</b><span class="amt tnum ${v < 0 ? 'neg' : 'pos'}">${sgn(v)} lb</span><p>${esc(wwWhy(k, v, est, isToday))}</p></li>`).join('')}</ul>` : '<p class="fine">Nothing unusual: food, drinks and training look like your normal week, so the estimate stays at your usual weight.</p>'}` : ''}
     ${est.creatine ? '<p class="fine">Creatine also keeps a steady 1–3 lb of water in your muscles. It isn’t counted above because it doesn’t change day to day.</p>' : ''}
     ${est.cycleDay ? `<p class="fine">Cycle day ${est.cycleDay}.</p>` : ''}
-    ${fc ? `<p class="wwfc tnum">Tomorrow morning, from what you’ve logged so far: <b>${sgn(fc.total)} lb</b> <span class="pill ww-${flab.tone}">${flab.label}</span><br><span class="fine">Updates as you log food, water and practice.</span></p>` : ''}
+    ${fc ? `<p class="wwfc tnum">Tomorrow morning, from what you’ve logged so far: <b>${usual ? `${lb1(usual + fc.total)} lb (${sgn(fc.total)})` : `${sgn(fc.total)} lb`}</b> <span class="pill ww-${flab.tone}">${flab.label}</span><br><span class="fine">Updates as you log food, water and practice.</span></p>` : ''}
     <div class="field"><label for="ww-morning">Morning weight <span class="hint">saves when you leave the box</span></label><div class="unit"><input type="number" id="ww-morning" inputmode="decimal" step="0.1" min="0" data-weigh="morning" data-date="${date}" value="${esc(morning)}" placeholder="—"><em>lb</em></div></div>
     ${est.scaleVsTrend != null ? `<div class="kv tnum"><div><span>Trend weight</span><b>${lb1(est.trend)} lb</b></div><div><span>Scale vs trend</span><b>${sgn(est.scaleVsTrend)} lb</b></div></div>
       <p class="fine">The trend smooths out daily swings. The gap between your scale and the trend is mostly water and food, so it should roughly match the estimate above.</p>` : ''}
@@ -2878,6 +2924,7 @@ document.addEventListener('click', e => {
     case 'eo-log': { const c = S.eo.sg?.[b.dataset.list]?.[Number(b.dataset.i)]; if (c) logCombo(c); break; }
     /* water */
     case 'water-add': addWater(Number(b.dataset.oz)); break;
+    case 'ww-why': S.wwOpen = !S.wwOpen; renderWaterWeight(); break;
     case 'water-entry': { const d = S.days[S.viewDate], i = Number(b.dataset.i), key = S.viewDate + ':' + i; if (!d?.water?.[i]) break;
       if (S.wSel === key) { const [x] = d.water.splice(i, 1); S.wSel = null; saveDay(S.viewDate); renderWater(); renderWaterWeight(); toast(`Removed ${dec(x.oz)} oz`); }
       else { S.wSel = key; renderWater(); toast(`${dec(d.water[i].oz)} oz at ${timeOf(d.water[i].t)}. Tap it again to remove`); } break; }

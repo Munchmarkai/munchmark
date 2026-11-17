@@ -11,7 +11,8 @@
   --orange:#FF9F1C; --yellow:#FFD23F; --blue:#4CB5F5; --blue-2:#9AD8FB; --green:#6FD08C; --purple:#B79CFF; --red:#FF6B6B; --pop-ink:#16201A;
   --protein-bg:var(--red); --carbs-bg:var(--yellow); --fat-bg:var(--blue); --other-bg:var(--purple);
   --wob:22px 18px 24px 16px/18px 24px 16px 22px; --wob-sm:13px 10px 14px 9px/10px 14px 9px 13px;
-  --f-display:"Shantell Sans","Archivo","Comic Sans MS",system-ui,sans-serif;
+  --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --f-hand:"Shantell Sans","Comic Sans MS","Archivo",system-ui,sans-serif;
   --f-body:"Figtree",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   color-scheme:light;
 }
@@ -61,7 +62,7 @@ button{cursor:pointer}
 
 .tum-sum{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center}
 .kcal-line{margin:0;display:flex;align-items:baseline;gap:8px;justify-content:center}
-.kcal-big{font-family:var(--f-display);font-weight:800;font-size:44px;line-height:1}
+.kcal-big{font-family:var(--f-hand);font-weight:800;font-size:44px;line-height:1}
 .kcal-lbl{font-size:15px;color:var(--muted);font-weight:650}
 .kcal-lbl.over{color:var(--warn)}
 #tummy{width:100%;max-width:440px}
@@ -79,7 +80,7 @@ button{cursor:pointer}
 .tummy[data-mood="full"] .tm-mouth{fill:#C2283C}
 .tummy[data-mood="hungry"] .tm-cheek{opacity:.25}
 /* grams: written in the band, or branched off to the side like a diagram label */
-.tm-tag{cursor:pointer;font-family:var(--f-display)}
+.tm-tag{cursor:pointer;font-family:var(--f-hand)}
 .tm-tag:focus-visible{outline:none}
 .tm-tag:focus-visible text{text-decoration:underline}
 .tm-tag text{fill:var(--ink)}
@@ -116,9 +117,9 @@ button{cursor:pointer}
 .mp-back{align-self:flex-start;display:inline-flex;align-items:center;gap:4px;min-height:38px;padding:0 12px 0 6px;margin-bottom:8px;border:2px solid var(--pop-ink);border-radius:999px;background:#fff;color:var(--pop-ink);font-weight:700;font-size:14px}
 .mp-back svg{width:18px;height:18px}
 .mp-day{margin:0;font-size:13px;font-weight:650;opacity:.8}
-.mp-title{margin:0;font-family:var(--f-display);font-weight:800;font-size:34px;line-height:1.05}
+.mp-title{margin:0;font-family:var(--f-hand);font-weight:800;font-size:34px;line-height:1.05}
 .mp-big{margin:6px 0 0;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.mp-big b{font-family:var(--f-display);font-weight:800;font-size:56px;line-height:.95}
+.mp-big b{font-family:var(--f-hand);font-weight:800;font-size:56px;line-height:.95}
 .mp-big span{font-weight:650;font-size:15px}
 .mp-note{margin:8px 0 0;font-size:13.5px;max-width:40ch}
 .mp-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
@@ -130,7 +131,7 @@ button{cursor:pointer}
 .mp-name b{display:block;font-weight:650;overflow-wrap:anywhere}
 .mp-name small,.mp-amt small{display:block;color:var(--muted);font-size:12.5px}
 .mp-amt{text-align:right}
-.mp-amt b{font-family:var(--f-display);font-weight:800;font-size:19px;white-space:nowrap}
+.mp-amt b{font-family:var(--f-hand);font-weight:800;font-size:19px;white-space:nowrap}
 .mp-bar{grid-column:1/-1;height:10px;border-radius:6px;background:var(--surface-2);overflow:hidden}
 .mp-bar i{display:block;height:100%;background:var(--c);border-right:2px solid var(--stroke)}
 @media (prefers-reduced-motion: reduce){.tm-band{animation:none}.tm-lvl,.bar i{transition:none}}
@@ -692,8 +693,6 @@ details.help ul.guesses{padding-left:0;color:inherit;font-size:inherit;gap:8px}
 a.btn{text-decoration:none}
 
 /* ---------- hand-made look: ink outlines, slightly uneven corners, paper-cut shadows ---------- */
-.h{font-size:15px;letter-spacing:0;text-transform:none;color:var(--accent);font-weight:800}
-.brand{font-size:23px;letter-spacing:-.01em}
 /* no boxes around sections: the page flows, with headings and space doing the dividing */
 .card{background:none;border:0;border-radius:0;box-shadow:none;padding:0}
 .view{gap:30px}
@@ -737,3 +736,21 @@ details.alln summary{padding-inline:0} .nlist{padding-inline:0}
 .nlist li{border-top:1.5px dashed var(--line)}
 button.nrow{width:100%;background:none;border:0;border-top:0;text-align:left;color:inherit;font-size:14px}
 .nrow .bar{margin-top:4px}
+/* bathroom scale: the water-weight estimate as the number you'd see stepping on */
+.scale-btn{display:block;width:100%;max-width:440px;background:none;border:0;padding:0;color:inherit}
+.sc-body{fill:var(--purple);stroke:#16201A;stroke-width:4;stroke-linejoin:round}
+.sc-back{fill:var(--paper);stroke:var(--paper);stroke-width:11;stroke-linejoin:round;filter:drop-shadow(1.5px 2.5px 0 rgba(0,0,0,.28))}
+.sc-screen{fill:#16201A;stroke:#16201A;stroke-width:3;stroke-linejoin:round}
+.sc-num{font-family:var(--f-hand);font-weight:800;font-size:30px;fill:#FFF8E8;text-anchor:middle}
+.sc-unit{font-family:var(--f-hand);font-weight:700;font-size:11px;fill:#B9C4BC}
+.sc-foot{fill:var(--paper);stroke:#16201A;stroke-width:3;stroke-linejoin:round}
+.sc-grip{fill:none;stroke:#16201A;stroke-width:2;stroke-linecap:round;opacity:.35}
+.sc-shine{fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round;opacity:.6}
+.scale-line{margin:0;font-size:14px;display:flex;flex-wrap:wrap;gap:6px 8px;justify-content:center;align-items:center}
+.ww-why{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.ww-why li{padding:12px 0;border-bottom:1.5px dashed var(--line);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px}
+.ww-why b{font-weight:650}
+.ww-why .amt{font-family:var(--f-hand);font-weight:800;font-size:17px;white-space:nowrap}
+.ww-why .amt.pos{color:var(--carbs)} .ww-why .amt.neg{color:var(--fat)}
+.ww-why p{grid-column:1/-1;margin:0;font-size:13.5px;color:var(--muted)}
+.ww-start{margin:0;font-size:13.5px}
